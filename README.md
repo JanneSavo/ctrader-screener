@@ -1,7 +1,7 @@
 # cTrader Screener
 
 A self-hosted stock screener that gets its market data from **cTrader Desktop
-over MCP** — no broker API registration, no market-data subscription, no cloud
+over MCP** no broker API registration, no market-data subscription, no cloud
 service. If cTrader runs on your machine, this can screen every symbol your
 broker offers.
 
@@ -90,7 +90,7 @@ client auto-matched. **Tool names differ between cTrader versions.** The shipped
 config pins about twenty of them against cTrader Desktop 2.0.0; if yours
 differs, the dump tells you exactly what to change.
 
-Auto-discovery alone is not safe here. On one version it matched the object
+Auto discovery alone is not safe here. On one version it matched the object
 deletion tool to `clear_chart_objects`, which erases *every* drawing on a chart.
 The pinned config exists for that reason.
 
@@ -142,7 +142,7 @@ All of these are measured, not theoretical.
 **cTrader's `Volume` is tick count, not share volume.** AAPL reports ~23,000
 where real volume is ~50 million. Every absolute turnover figure is therefore
 meaningless and only relative comparisons are valid. The code treats it that
-way — don't add a dollar-volume threshold without reading `tape.py` first.
+way don't add a dollar-volume threshold without reading `tape.py` first.
 
 **cTrader only quotes subscribed symbols.** A symbol with no open chart may
 answer "unsubscribed" and show no live price. Plotting it opens a chart, which
@@ -167,10 +167,10 @@ comparable to each other.
 The review is narrow classification, not reasoning, and model choice matters
 more than parameter count:
 
-- **qwen2.5:14b-instruct** — the default. Zero JSON errors, ~2.5s per setup.
-- **qwen2.5:7b-instruct** — flagged setups for the *absence* of news, which the
+- **qwen2.5:14b-instruct** the default. Zero JSON errors, ~2.5s per setup.
+- **qwen2.5:7b-instruct** flagged setups for the *absence* of news, which the
   prompt explicitly forbids, and misattributed headlines more often.
-- **qwen3:14b / qwen3:8b** — hybrid reasoning models. Ollama's
+- **qwen3:14b / qwen3:8b** hybrid reasoning models. Ollama's
   OpenAI-compatible endpoint puts their chain-of-thought in a separate
   `reasoning` field and returns an **empty** `content`, so every reply looks
   like a failure. `llm.py` detects this and retries against the native
@@ -186,13 +186,13 @@ cost of more calls.
 
 ## Safety
 
-The screener **places no orders**. Bots are paper-only unless you set
+The screener **places no orders**. Bots are paper only unless you set
 `bots.allow_live`, *and* arm each bot individually by typing its key, *and* an
 order tool is resolved on the session. Saving a bot directly as live is refused.
 
 The chat assistant reads everything but writes exactly one thing: a strategy
 recipe, saved **disabled**. It cannot scan, plot, trade or arm a bot. It also
-cannot save a recipe without previewing it first — that is enforced in code, not
+cannot save a recipe without previewing it first that is enforced in code, not
 requested in the prompt.
 
 Chart plotting only ever deletes object IDs it created itself.
@@ -222,7 +222,7 @@ backtest.py        walk-forward gate replay and trade simulation
 static/index.html  the dashboard
 ```
 
-`DESIGN.md` has the long-form engineering record: what broke, what the
+`DESIGN.md` has the long form engineering record: what broke, what the
 measurements showed, and why several things are deliberately not what they look
 like they should be.
 
@@ -230,8 +230,8 @@ like they should be.
 
 ## Status
 
-A personal project, shared as-is. It works and is tested against a live cTrader
-install. It ships with no proven edge — the backtest exists precisely so you can
+It works and is tested against a live cTrader install.
+It ships with no proven edge and the backtest exists precisely so you can
 find that out for your own strategies.
 
 Trading involves risk of loss. Nothing here is financial advice.
