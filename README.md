@@ -171,7 +171,7 @@ more than parameter count:
 - **qwen2.5:7b-instruct** flagged setups for the *absence* of news, which the
   prompt explicitly forbids, and misattributed headlines more often.
 - **qwen3:14b / qwen3:8b** hybrid reasoning models. Ollama's
-  OpenAI-compatible endpoint puts their chain-of-thought in a separate
+  OpenAI-compatible endpoint puts their chain of thought in a separate
   `reasoning` field and returns an **empty** `content`, so every reply looks
   like a failure. `llm.py` detects this and retries against the native
   `/api/chat` with `think: false`. Even fixed, qwen3:14b ran ~6x slower for no

@@ -279,11 +279,9 @@ social:
 # ---------------------------------------------------------------------------
 llm:
   enabled: true            # flip to true once the model server is up
-  provider: local          # local = any OpenAI-compatible server you host
-                           #         (Ollama, LM Studio, llama.cpp, vLLM).
-                           #         Nothing leaves this machine.
-                           # anthropic = hosted, for comparison runs.
-  base_url: "http://127.0.0.1:11434/v1"   # Ollama default. LM Studio: :1234/v1
+  base_url: "http://127.0.0.1:11434/v1"   # any OpenAI-compatible server you host
+                                        # (Ollama, LM Studio, llama.cpp, vLLM).
+                                        # Ollama default; LM Studio uses :1234/v1
   model: "qwen2.5:14b-instruct"   # 7b flagged on absence of news and misattributed
                                   # more often; 14b fits 12GB at q4 and is better
                                   # calibrated. ~2.6s/setup vs 1.9s.
@@ -293,7 +291,7 @@ llm:
                            # ~9s. qwen3:14b reasons better but runs ~6x slower,
                            # which is painful in an interactive chat. Set it to
                            # qwen3:14b only if you want depth over latency.
-  api_key: ""              # unused for local; required for anthropic
+  api_key: ""              # only if your model server requires a bearer token
   temperature: 0.0         # this is classification, not writing
   max_tokens: 900          # 600 truncated hybrid-reasoning models before the JSON
   timeout_s: 120           # first call after load includes model warm-up

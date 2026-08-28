@@ -112,114 +112,91 @@ Respond with ONLY a JSON object, no prose, no markdown fence:
 
 
 class Analyst:
-    """Talks to whatever model you point it at.
+    """Talks to whatever model server you point it at.
 
-    provider="local" speaks the OpenAI chat-completions shape, which is what
-    Ollama, LM Studio, llama.cpp's server and vLLM all expose. Nothing leaves
-    your machine; the name refers to the request format, not to a vendor.
-
-    provider="anthropic" keeps the hosted path for comparison runs.
+    Speaks the OpenAI chat-completions shape, which is what Ollama, LM Studio,
+    llama.cpp's server and vLLM all expose. The name refers to the request
+    format, not to a vendor - nothing leaves your machine.
     """
 
     def __init__(self, cfg: dict, store):
         self.cfg = cfg
         self.store = store
-        self.provider = cfg.get("provider", "local")
         self.model = cfg.get("model", "qwen2.5:7b-instruct")
         self.base_url = str(cfg.get("base_url", "http://127.0.0.1:11434/v1")).rstrip("/")
         self.mode = cfg.get("mode", "normal")
-        # a local endpoint needs no key; a hosted one does
-        self.enabled = bool(cfg.get("enabled")) and (
-            self.provider == "local" or bool(cfg.get("api_key")))
+        self.enabled = bool(cfg.get("enabled"))
         self._client = None
 
     def _client_or_none(self):
         if self._client is None:
-            if self.provider == "local":
-                import httpx
-                self._client = httpx.AsyncClient(
-                    base_url=self.base_url,
-                    timeout=float(self.cfg.get("timeout_s", 120)),
-                    headers={"Authorization": f"Bearer {self.cfg.get('api_key') or 'local'}"})
-            else:
-                try:
-                    from anthropic import AsyncAnthropic
-                    self._client = AsyncAnthropic(api_key=self.cfg["api_key"])
-                except ImportError:
-                    return None
+            import httpx
+            self._client = httpx.AsyncClient(
+                base_url=self.base_url,
+                timeout=float(self.cfg.get("timeout_s", 120)),
+                headers={"Authorization": f"Bearer {self.cfg.get('api_key') or 'local'}"})
         return self._client
 
     async def _complete(self, brief: str, system: str | None = None) -> str:
-        """One completion, returning raw text. Provider differences end here."""
+        """One completion, returning raw text."""
         system = system or SYSTEM
         client = self._client_or_none()
-        if self.provider == "local":
-            # Qwen3 and other hybrid-reasoning models emit a <think> block first.
-            # On a long prompt that reasoning consumes the whole token budget and
-            # the JSON never arrives - 4 of 8 replies came back truncated. The
-            # "/no_think" suffix turns it off; harmless on models that ignore it.
-            user = brief + ("\n\n/no_think" if self.cfg.get("no_think", True) else "")
-            body = {
-                "model": self.model,
-                "messages": [{"role": "system", "content": system},
-                             {"role": "user", "content": user}],
-                "temperature": float(self.cfg.get("temperature", 0.0)),
-                "max_tokens": int(self.cfg.get("max_tokens", 900)),
-            }
-            if self.cfg.get("json_mode", True):
-                body["response_format"] = {"type": "json_object"}
+        # Qwen3 and other hybrid-reasoning models emit a <think> block first.
+        # On a long prompt that reasoning consumes the whole token budget and
+        # the JSON never arrives - 4 of 8 replies came back truncated. The
+        # "/no_think" suffix turns it off; harmless on models that ignore it.
+        user = brief + ("\n\n/no_think" if self.cfg.get("no_think", True) else "")
+        body = {
+            "model": self.model,
+            "messages": [{"role": "system", "content": system},
+                         {"role": "user", "content": user}],
+            "temperature": float(self.cfg.get("temperature", 0.0)),
+            "max_tokens": int(self.cfg.get("max_tokens", 900)),
+        }
+        if self.cfg.get("json_mode", True):
+            body["response_format"] = {"type": "json_object"}
+        r = await client.post("/chat/completions", json=body)
+        if r.status_code == 400 and "response_format" in body:
+            body.pop("response_format")      # older servers reject it
             r = await client.post("/chat/completions", json=body)
-            if r.status_code == 400 and "response_format" in body:
-                body.pop("response_format")      # older servers reject it
-                r = await client.post("/chat/completions", json=body)
-            r.raise_for_status()
-            msg = r.json()["choices"][0]["message"]
-            txt = msg.get("content") or ""
-            if txt.strip():
-                return txt
-            # Ollama's OpenAI shim puts a hybrid model's chain-of-thought in a
-            # separate "reasoning" field and leaves content EMPTY. Qwen3 burned
-            # 900 tokens thinking and returned nothing, 4-8 times out of 8, and
-            # "/no_think" in the prompt does not suppress it. The native endpoint
-            # takes think=false, which does. Retry there before giving up.
-            if msg.get("reasoning") or msg.get("reasoning_content"):
-                native = str(client.base_url).rstrip("/")
-                native = native[:-3] if native.endswith("/v1") else native
-                nb = {"model": self.model, "think": False, "stream": False,
-                      "format": "json" if self.cfg.get("json_mode", True) else None,
-                      "options": {"temperature": float(self.cfg.get("temperature", 0.0)),
-                                  "num_predict": int(self.cfg.get("max_tokens", 900))},
-                      "messages": body["messages"]}
-                nb = {k: v for k, v in nb.items() if v is not None}
-                nr = await client.post(f"{native}/api/chat", json=nb)
-                nr.raise_for_status()
-                return nr.json().get("message", {}).get("content") or ""
+        r.raise_for_status()
+        msg = r.json()["choices"][0]["message"]
+        txt = msg.get("content") or ""
+        if txt.strip():
             return txt
-
-        msg = await client.messages.create(
-            model=self.model, max_tokens=int(self.cfg.get("max_tokens", 600)),
-            system=[{"type": "text", "text": system,
-                     "cache_control": {"type": "ephemeral"}}],
-            messages=[{"role": "user", "content": brief}])
-        return "".join(b.text for b in msg.content if b.type == "text")
+        # Ollama's OpenAI shim puts a hybrid model's chain-of-thought in a
+        # separate "reasoning" field and leaves content EMPTY. Qwen3 burned
+        # 900 tokens thinking and returned nothing, 4-8 times out of 8, and
+        # "/no_think" in the prompt does not suppress it. The native endpoint
+        # takes think=false, which does. Retry there before giving up.
+        if msg.get("reasoning") or msg.get("reasoning_content"):
+            native = str(client.base_url).rstrip("/")
+            native = native[:-3] if native.endswith("/v1") else native
+            nb = {"model": self.model, "think": False, "stream": False,
+                  "format": "json" if self.cfg.get("json_mode", True) else None,
+                  "options": {"temperature": float(self.cfg.get("temperature", 0.0)),
+                              "num_predict": int(self.cfg.get("max_tokens", 900))},
+                  "messages": body["messages"]}
+            nb = {k: v for k, v in nb.items() if v is not None}
+            nr = await client.post(f"{native}/api/chat", json=nb)
+            nr.raise_for_status()
+            return nr.json().get("message", {}).get("content") or ""
+        return txt
 
     async def health(self) -> dict:
         """Is the endpoint up, and does it have the model we ask for?"""
-        if self.provider != "local":
-            return {"provider": self.provider, "model": self.model,
-                    "ok": bool(self.cfg.get("api_key"))}
         import httpx
         try:
             async with httpx.AsyncClient(timeout=10) as c:
                 r = await c.get(f"{self.base_url}/models")
                 r.raise_for_status()
                 names = [m.get("id") for m in (r.json().get("data") or [])]
-            return {"provider": "local", "base_url": self.base_url,
+            return {"base_url": self.base_url,
                     "model": self.model, "ok": True, "models": names,
                     "model_present": any(str(n).startswith(self.model.split(":")[0])
                                          for n in names)}
         except Exception as e:
-            return {"provider": "local", "base_url": self.base_url,
+            return {"base_url": self.base_url,
                     "model": self.model, "ok": False, "error": str(e)[:200]}
 
     # -- prompt ------------------------------------------------------------
@@ -270,7 +247,7 @@ class Analyst:
         if client is None:
             for r in rows:
                 r["llm"] = {"verdict": "error",
-                            "reasons": [f"{self.provider} client unavailable"],
+                            "reasons": ["model server unavailable"],
                             "mode": self.mode}
             return rows
 

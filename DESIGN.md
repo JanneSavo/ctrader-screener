@@ -39,7 +39,7 @@ config.yaml       connection + every threshold
 
 ```bash
 python -m venv .venv && .venv\Scripts\activate
-pip install mcp fastapi uvicorn pyyaml pandas numpy httpx anthropic yfinance
+pip install -r requirements.txt
 ```
 
 Python 3.13 is fine here — nothing in this project pulls in `ctrader-open-api`,
