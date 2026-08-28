@@ -1,5 +1,5 @@
 # cTrader Screener - a self-hosted stock screener sourcing data from cTrader.
-# Copyright (C) 2026 JanneSavo
+# Copyright (C) 2026 Janne Savolainen
 #
 # This program is free software: you can redistribute it and/or modify it under
 # the terms of the GNU Affero General Public License as published by the Free

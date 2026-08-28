@@ -247,7 +247,7 @@ Other names used here belong to their respective owners.
 
 ## License
 
-Copyright (C) 2026 JanneSavo.
+Copyright (C) 2026 Janne Savolainen.
 
 Licensed under the **GNU Affero General Public License v3.0 or later**. See
 [LICENSE](LICENSE) for the full text.
