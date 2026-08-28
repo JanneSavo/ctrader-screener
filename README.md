@@ -230,12 +230,37 @@ like they should be.
 
 ## Status
 
-It works and is tested against a live cTrader install.
-It ships with no proven edge and the backtest exists precisely so you can
+A personal project, shared as-is. It works and is tested against a live cTrader
+install. It ships with no proven edge, the backtest exists precisely so you can
 find that out for your own strategies.
 
 Trading involves risk of loss. Nothing here is financial advice.
 
+## Trademarks
+
+cTrader is a trademark of Spotware Systems Ltd. This project is an independent
+work that talks to cTrader through its documented MCP interface. It is **not
+affiliated with, endorsed by, or supported by Spotware Systems Ltd**, and the
+name is used only to describe what the software connects to.
+
+Other names used here belong to their respective owners.
+
 ## License
 
-MIT
+Copyright (C) 2026 JanneSavo.
+
+Licensed under the **GNU Affero General Public License v3.0 or later**. See
+[LICENSE](LICENSE) for the full text.
+
+In short: you may use, study, modify and share this freely. If you distribute a
+modified version, or **run one as a network service that other people use**, you
+must make your source available to those users under the same license. That
+network clause is the reason for AGPL rather than GPL, and it is the whole point
+of the choice.
+
+If you run a modified copy, update the source link in the dashboard footer so it
+points at your version rather than this one.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE.

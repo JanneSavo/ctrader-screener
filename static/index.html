@@ -177,6 +177,14 @@ tr.prov .sym::after{content:"·prov";font-family:var(--mono);font-size:9px;color
   font-size:11px;color:var(--muted)}
 .hint button:hover{border-color:var(--mark);color:var(--mark)}
 .thinking{color:var(--dim);font-size:12px;padding:0 14px 10px;font-family:var(--mono)}
+
+/* AGPL section 13: anyone using this over a network must be able to get the
+   source. A licence file in a repo does not reach them - this link does. */
+.agpl-footer{padding:18px 20px 26px;color:var(--dim);font-size:11px;
+  line-height:1.6;border-top:1px solid var(--rule);margin-top:30px;
+  font-family:var(--mono);letter-spacing:.02em}
+.agpl-footer a{color:var(--muted);text-decoration:underline}
+.agpl-footer a:hover{color:var(--mark)}
 .tabs{display:flex;gap:2px;padding:0 20px;border-bottom:1px solid var(--rule)}
 .tabs button{padding:10px 15px;font-size:13px;font-weight:500;color:var(--muted);
   border-bottom:2px solid transparent;margin-bottom:-1px}
@@ -581,6 +589,17 @@ select:hover,input:hover{border-color:var(--muted)}
   </section>
 </main>
 
+
+
+<footer class="agpl-footer">
+  cTrader Screener &mdash; Copyright &copy; 2026 JanneSavo.
+  Free software under the
+  <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noopener">GNU AGPL v3</a>.
+  Source:
+  <a href="https://github.com/JanneSavo/ctrader-screener" target="_blank" rel="noopener">github.com/JanneSavo/ctrader-screener</a>.
+  Comes with ABSOLUTELY NO WARRANTY. Not affiliated with or endorsed by Spotware
+  Systems Ltd; cTrader is their trademark. Not financial advice.
+</footer>
 
 <button class="fab" id="fab" title="Ask the assistant (Ctrl+K)">&#9679;</button>
 <aside class="dock" id="dock" aria-hidden="true">
