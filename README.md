@@ -1,7 +1,7 @@
 # cTrader Screener
 
 A self-hosted stock screener that gets its market data from **cTrader Desktop
-over MCP** no broker API registration, no market-data subscription, no cloud
+over MCP** no broker API registration, no market data subscription, no cloud
 service. If cTrader runs on your machine, this can screen every symbol your
 broker offers.
 
@@ -31,7 +31,7 @@ the move the index already accounts for, beta-adjusted. Only the genuinely
 company-specific remainder reaches a model, along with a dated headline
 timeline. "Unexplained" is a supported and frequently correct answer.
 
-**Draws** setups back onto your cTrader charts — entry, stop and target as a
+**Draws** setups back onto your cTrader charts entry, stop and target as a
 native risk/reward block, the pullback window as a rectangle, plus a label. It
 records the object IDs it creates and never touches anything you drew yourself.
 
@@ -55,7 +55,7 @@ over your own scans, strategies, backtests and headlines.
 - Optional: a free **[Finnhub](https://finnhub.io)** key for earnings dates and
   company news
 
-Without Ollama the screener still works — you lose the review and the chat.
+Without Ollama the screener still works you lose the review and the chat.
 Without Finnhub you lose the earnings blackout and company news.
 
 ---
@@ -79,7 +79,7 @@ cTrader Desktop serves MCP as a **local HTTP server**, normally on
 `127.0.0.1:9876`. Confirm the address in its AI Agent Connect screen and set
 `ctrader.remote.url` in `config.yaml` to match.
 
-### 2. Verify the tool names — do not skip this
+### 2. Verify the tool names do not skip this
 
 ```bash
 python ctrader_mcp.py --dump-tools
@@ -114,7 +114,7 @@ Set `llm.enabled: true`, then check `GET /api/llm/health` and run one real
 verdict with `POST /api/llm/test`.
 
 A 12GB card runs a 14B at Q4 comfortably. Read **Model notes** below before
-choosing something else — the obvious alternatives have non-obvious failure
+choosing something else the obvious alternatives have non-obvious failure
 modes.
 
 ---
