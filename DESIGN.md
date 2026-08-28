@@ -4,15 +4,16 @@ The engineering record behind this project: what was built, what broke, what the
 measurements showed, and why several things are deliberately not what they look
 like they should be.
 
-For setup and usage, see README.md.
+**This is a historical document.** Sections were written as the project evolved
+and some describe earlier designs that were later replaced — most notably the
+cTrader connection, which was first assumed to be a stdio command and is in fact
+a local HTTP server. **README.md is authoritative for setup.** Read this for the
+reasoning, not the instructions.
 
 # Pullback screener
 
 A local web screener for the 50DMA pullback setup. Bars, symbol list and account
 equity come from cTrader over MCP — no Yahoo, no broker API registration.
-
-Separate project. It shares nothing with `ctrader-screener` and writes its own
-database.
 
 ```
 ctrader_mcp.py    MCP client + response normalizers
@@ -41,9 +42,8 @@ python -m venv .venv && .venv\Scripts\activate
 pip install mcp fastapi uvicorn pyyaml pandas numpy httpx anthropic yfinance
 ```
 
-Python 3.13 is fine here. The 3.11 pin on the old project came from
-`ctrader-open-api` dragging in Twisted 24.3.0 and protobuf 3.20.1 — nothing in
-this one touches that.
+Python 3.13 is fine here — nothing in this project pulls in `ctrader-open-api`,
+which is what forces older Python and pinned Twisted/protobuf versions elsewhere.
 
 ### 1. Point it at cTrader
 
