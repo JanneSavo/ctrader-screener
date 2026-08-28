@@ -1,0 +1,321 @@
+# ---------------------------------------------------------------------------
+# Copy this file to config.yaml and fill in your own values.
+# config.yaml is gitignored - keep your keys out of the repository.
+#
+# The only value you MUST check before the first run is ctrader.remote.url,
+# and the tool names under ctrader.tools. Both are verified by:
+#     python ctrader_mcp.py --dump-tools
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# cTrader connection
+# ---------------------------------------------------------------------------
+ctrader:
+  # cTrader Desktop runs its MCP as a local HTTP server on 127.0.0.1:9876,
+  # not as a stdio command. So "remote" transport, local address, no token.
+  # cTrader must be running for the port to be listening.
+  mode: remote             # remote = HTTP transport. local = stdio command.
+  index_symbol: US500      # step 1 of the strategy gates everything on this
+  timeframe: Daily
+  # MUST BE 1. cTrader Desktop's MCP server does not tolerate overlapping
+  # requests on a session: 8 concurrent calls deadlocked for 90s+, while the
+  # same 8 run sequentially in 2.4s. Raising this brings the stall straight back.
+  max_concurrency: 1
+  call_timeout_s: 30       # no single tool call may hang the whole scan
+  connect_timeout_s: 20    # bound the MCP handshake so a wrong command cannot stall the app
+
+  local:
+    # Copy this verbatim from cTrader's own MCP setup screen
+    # (Settings -> AI Agent Connect -> Local MCP -> the JSON it shows your AI client).
+    command: npx
+    args: ["-y", "@spotware/ctrader-mcp"]
+    env: {}
+
+  remote:
+    url: "http://localhost:9876/mcp/"   # cTrader Desktop's local MCP server
+    token: ""              # left empty on purpose: localhost needs no auth.
+                           # Only fill this in for cTrader Web's remote MCP.
+
+  # Leave empty to auto-discover by name. After running
+  #   python ctrader_mcp.py --dump-tools
+  # pin the real tool names and argument names here and the guessing stops.
+  # PINNED against the real cTrader Desktop 2.0.0 toolset (78 tools).
+  # Auto-discovery got several of these wrong, so do not delete this block.
+  tools:
+    candles:
+      name: get_trendbars
+      args: {symbolName: "{symbol}", timeframe: "{timeframe}",
+             from: "{from}", to: "{to}", limit: "{count}"}
+    symbols:
+      name: get_symbols
+      args: {}
+    account:
+      name: get_balance
+      args: {}
+    quotes:
+      name: get_spot_prices
+      args: {symbolName: "{symbol}"}
+    news:
+      name: get_news
+      args: {}
+    details:
+      name: get_symbol_details
+      args: {symbolName: "{symbol}"}
+    # auto-matched to get_chart_viewport, because its description mentions
+    # "scroll position". Pinned.
+    positions:
+      name: get_positions
+      args: {}
+    # auto-matched to list_charts. Pinned.
+    chart_open:
+      name: open_chart
+      args: {symbolName: "{symbol}", timeframe: "{period}"}
+    chart_list:
+      name: list_charts
+      args: {}
+    chart_focus:
+      name: focus_chart
+      args: {chartId: "{chart_id}"}
+    chart_timeframe:
+      name: change_chart_timeframe
+      args: {timeframe: "{period}"}
+    indicator_add:
+      name: addChartIndicator
+      args: {typeName: "{name}"}
+    # One tool draws every object type, on the ACTIVE chart, and returns an
+    # objectId. There is no per-symbol scoping and no name argument.
+    object_add:
+      name: add_chart_object
+      args: {}
+    object_list:
+      name: get_chart_objects
+      args: {}
+    # DANGER: auto-discovery matched this to clear_chart_objects, which deletes
+    # EVERY drawing on the chart - including your own trendlines and Fibs.
+    # delete_chart_object removes exactly one object by id. Pinned.
+    object_delete:
+      name: delete_chart_object
+      args: {objectId: "{object_id}"}
+    order_place:
+      name: place_market_order
+      args: {}
+    # cTrader only serves live quotes for SUBSCRIBED symbols. A symbol with no
+    # open chart and no watchlist entry answers "symbol is unsubscribed", so the
+    # screener keeps its setups in a watchlist to make them quotable.
+    watchlist_get:
+      name: get_watchlists
+      args: {}
+    watchlist_create:
+      name: create_watchlist
+      args: {name: "{name}"}
+    watchlist_add:
+      name: add_symbol_to_watchlist
+      args: {watchlistName: "{name}", symbolName: "{symbol}"}
+    watchlist_remove:
+      name: remove_symbol_from_watchlist
+      args: {watchlistName: "{name}", symbolName: "{symbol}"}
+
+# ---------------------------------------------------------------------------
+# universe
+# ---------------------------------------------------------------------------
+# One ticker per line. The scan is the intersection of this list and what your
+# broker actually offers — no point ranking names you cannot trade.
+universe_file: sp500.txt
+symbol_suffixes: [".US", ".NAS", ".NYSE"]
+universe_ttl_s: 86400
+incremental_bars: 10       # bars pulled per symbol once it is cached
+
+# ---------------------------------------------------------------------------
+# service
+# ---------------------------------------------------------------------------
+host: 127.0.0.1
+port: 8790
+db: screener.db
+fallback_equity: 10000     # used only if the account tool is unavailable
+
+# ---------------------------------------------------------------------------
+# refresh — three clocks, all in seconds, 0 disables
+# ---------------------------------------------------------------------------
+refresh:
+  quote_interval: 5      # price only, for rows on screen. 1 is about the MCP floor.
+  forming_interval: 60   # re-run the gates on today's still-open daily bar
+  scan_interval: 0       # full universe re-scan. 0 = manual. Nothing new appears
+                         # until a daily bar closes, so this belongs on a slow
+                         # clock (e.g. 3600) or off entirely.
+  max_chase_pct: 1.5     # how far above entry before a row is called a chase
+
+# ---------------------------------------------------------------------------
+# strategies — every file in strategies/ is discovered automatically.
+# Enable as many as you like; they share one bar fetch and run over the same
+# frames. Each keeps its own params. Scores are ranked WITHIN a strategy only.
+# ---------------------------------------------------------------------------
+strategies:
+  pullback50:
+    enabled: true
+    trend_min_frac: 0.70
+    touch_atr: 0.60
+    depth_max: 0.150
+    atr_stop_mult: 1.75
+    target_pct: 0.10
+    min_rr: 1.8
+
+  breakout:
+    enabled: true
+    lookback: 40
+    squeeze_max: 0.65
+    vol_ratio_min: 1.30
+    atr_stop_mult: 2.0
+    target_r: 2.5
+
+  meanrev:
+    enabled: true
+    rsi_max: 10.0
+    down_days_min: 2
+    max_drop_atr: 4.0
+    atr_stop_mult: 2.5
+
+# ---------------------------------------------------------------------------
+# shared risk + regime settings (used by all strategies)
+# ---------------------------------------------------------------------------
+strategy:
+  sma_fast: 50
+  sma_slow: 200
+  atr_len: 14
+
+  trend_window: 60
+  trend_min_frac: 0.70     # share of the last 60 closes above the 50DMA
+
+  pullback_lookback: 10
+  touch_atr: 0.60          # low must come this close to the 50DMA
+  break_atr: 1.00          # but no close further than this below it
+  depth_min: 0.025
+  depth_max: 0.150
+
+  close_pos_min: 0.55      # where the bounce bar closes inside its range
+  vol_ratio_min: 0.90
+  max_extension_atr: 1.25  # do not buy a bounce that already ran
+
+  fixed_stop_pct: 0.05     # reference only
+  atr_stop_mult: 1.75      # what sizing actually uses
+  target_pct: 0.10
+  min_rr: 1.8
+
+  risk_per_trade: 0.01
+
+# ---------------------------------------------------------------------------
+# catalysts — earnings dates and news
+# ---------------------------------------------------------------------------
+catalysts:
+  enabled: true
+  finnhub_key: ""          # finnhub.io free tier, ~60 req/min. One bulk call
+                           # covers the whole earnings calendar.
+  ttl_s: 43200             # re-pull the calendar twice a day
+  blackout_days: 10        # hard reject if it reports within this many days
+  typical_hold_days: 20    # inside this, keep it but warn
+  block_unknown: false     # true = reject anything with no confirmed date
+  yfinance_fallback: true  # per-symbol, survivors only
+  news_days: 7
+  news_limit: 8
+  # NOT ctrader. cTrader's get_news takes no symbol argument - it is a general
+  # FX/crypto wire, so every stock came back with the same USD/JPY headlines
+  # attributed to it. Company news needs Finnhub. With no key set, the news
+  # block is simply empty, which is better than wrong.
+  prefer: finnhub
+
+# ---------------------------------------------------------------------------
+# bots — built in the Bots tab. Paper only unless you change allow_live.
+# ---------------------------------------------------------------------------
+bots:
+  tick_s: 60             # how often paper bots evaluate. 0 disables them.
+  allow_live: false      # even true only unlocks the arm step; each bot still
+                         # has to be armed individually by typing its key.
+
+# ---------------------------------------------------------------------------
+# plot — draw setups back onto the cTrader chart. LOCAL MCP ONLY.
+# Writes to your workspace UI: focuses/opens charts and draws objects.
+# Places no orders. Only ever deletes objectIds it created itself.
+# ---------------------------------------------------------------------------
+plot:
+  auto: true            # true = plot the top N automatically after every scan
+  top_n: 5
+  timeframe: d1          # cTrader codes: m1 m5 m15 m30 h1 h4 d1 w1 month1
+  delay_s: 0.2           # pause between symbols; drawing switches the active chart
+  clear_before_draw: true   # delete only the ids this tool created last time
+  draw_risk_block: true  # cTrader's native risk_reward object (entry/stop/target).
+                         # Interactive, so its labels only appear on mouse-over,
+                         # and its "Lots" figure is cTrader's own default risk
+                         # sizing - NOT the size this screener calculated.
+  draw_levels: true      # plain horizontal lines for entry/stop/target. These
+                         # stay visible without hovering and tag the price axis.
+  draw_zone: true        # pullback rectangle + bounce marker
+  draw_label: true       # score, R, size, earnings, tape flags, review verdict
+  draw_indicators: false # addChartIndicator takes no period argument, so it adds
+                         # the indicator with cTrader's defaults, not 50/200.
+  indicators: ["Simple Moving Average"]
+  colors:
+    entry: "#7E8DA0"
+    stop: "#E2685F"
+    target: "#6FD3B5"
+    zone: "#E8B94A"
+    bounce: "#6FD3B5"
+    label: "#E7ECF3"
+
+# ---------------------------------------------------------------------------
+# social — chatter as a RISK input. Never a buy signal. See social.py.
+# ---------------------------------------------------------------------------
+social:
+  enabled: false
+  provider: stocktwits     # stocktwits | reddit
+  limit: 15
+  concurrency: 3
+  # Reddit needs an approved OAuth client. Self-service registration closed in
+  # late 2025; new clients go through a manual ticket that can be rejected.
+  reddit_client_id: ""
+  reddit_secret: ""
+  subreddits: [stocks, investing, wallstreetbets]
+
+# ---------------------------------------------------------------------------
+# LLM review — reads the text, cannot touch the numbers
+# ---------------------------------------------------------------------------
+llm:
+  enabled: true            # flip to true once the model server is up
+  provider: local          # local = any OpenAI-compatible server you host
+                           #         (Ollama, LM Studio, llama.cpp, vLLM).
+                           #         Nothing leaves this machine.
+                           # anthropic = hosted, for comparison runs.
+  base_url: "http://127.0.0.1:11434/v1"   # Ollama default. LM Studio: :1234/v1
+  model: "qwen2.5:14b-instruct"   # 7b flagged on absence of news and misattributed
+                                  # more often; 14b fits 12GB at q4 and is better
+                                  # calibrated. ~2.6s/setup vs 1.9s.
+  assistant_model: ""      # model for the Chat dock. Empty = same as `model`.
+                           # Benchmarked on factual / context / drafting prompts:
+                           # qwen2.5:14b-instruct answers in 1-2 tool steps at
+                           # ~9s. qwen3:14b reasons better but runs ~6x slower,
+                           # which is painful in an interactive chat. Set it to
+                           # qwen3:14b only if you want depth over latency.
+  api_key: ""              # unused for local; required for anthropic
+  temperature: 0.0         # this is classification, not writing
+  max_tokens: 900          # 600 truncated hybrid-reasoning models before the JSON
+  timeout_s: 120           # first call after load includes model warm-up
+  json_mode: true          # falls back automatically if the server rejects it
+  no_think: true           # appends /no_think for Qwen3-style models. Ollama also
+                           # hides their reasoning in a separate field and returns
+                           # an EMPTY content string, so llm.py retries such replies
+                           # against the native /api/chat with think=false.
+  mode: normal             # normal | shuffled | blind   (see llm.py for the ablation)
+  style: per_headline          # holistic     = one call per setup, model weighs everything.
+                           #                Faster (~15s for 8) but it misattributes:
+                           #                given another company's headlines it cites
+                           #                them as this symbol's.
+                           # per_headline = one call per headline (about? catalyst?
+                           #                impact?), verdict computed in Python from
+                           #                the labels. Foreign headlines cannot reach
+                           #                the verdict by construction. ~35s for 8.
+                           #                Scored 0 leaks vs 1 for holistic, and it
+                           #                reports how many headlines were actually
+                           #                about the company - often very few.
+  concurrency: 1           # 1, not more. Parallel requests on a 12GB card made
+                           # Ollama truncate prompts: qwen3:14b went from 4 JSON
+                           # errors at concurrency 1 to 7 at concurrency 2.
+  cache_ttl_s: 21600
+  drop_on_avoid: false     # false = flag it in the UI, true = remove it from the list

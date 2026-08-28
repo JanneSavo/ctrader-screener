@@ -1,0 +1,1775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pullback screener</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#10151c; --panel:#171e28; --raise:#1d2632; --rule:#26303d;
+  --text:#e7ecf3; --muted:#7e8da0; --dim:#556375;
+  --live:#6fd3b5; --stop:#e2685f; --mark:#e8b94a;
+  --sans:'IBM Plex Sans',system-ui,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--ink);color:var(--text);font-family:var(--sans);font-size:14px;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;cursor:pointer;border:none;background:none}
+:focus-visible{outline:2px solid var(--mark);outline-offset:2px}
+
+/* ---- regime strip: the strategy's first gate, so it gates the page ---- */
+.regime{display:flex;align-items:center;gap:14px;padding:9px 20px;border-bottom:1px solid var(--rule);
+  font-family:var(--mono);font-size:12px;letter-spacing:.04em}
+.regime .dot{width:7px;height:7px;border-radius:50%;flex:none}
+.regime.on{background:linear-gradient(90deg,rgba(111,211,181,.14),transparent 60%)}
+.regime.on .dot{background:var(--live);box-shadow:0 0 0 3px rgba(111,211,181,.16)}
+.regime.off{background:linear-gradient(90deg,rgba(226,104,95,.16),transparent 60%)}
+.regime.off .dot{background:var(--stop);box-shadow:0 0 0 3px rgba(226,104,95,.16)}
+.regime .state{font-weight:600;letter-spacing:.10em}
+.regime .note{color:var(--muted);letter-spacing:0}
+.regime .nums{margin-left:auto;color:var(--dim)}
+
+header{display:flex;align-items:baseline;gap:18px;padding:22px 20px 14px}
+h1{margin:0;font-size:19px;font-weight:600;letter-spacing:-.015em}
+h1 span{color:var(--dim);font-weight:400}
+.sub{color:var(--muted);font-size:12.5px;max-width:56ch;line-height:1.5}
+
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:0 20px 16px}
+.scan{background:var(--text);color:var(--ink);font-weight:600;font-size:13px;
+  padding:9px 18px;border-radius:3px;letter-spacing:.01em}
+.scan:hover{background:#fff}
+.scan[disabled]{background:var(--raise);color:var(--dim);cursor:default}
+.meta{font-family:var(--mono);font-size:11.5px;color:var(--dim);letter-spacing:.03em}
+.meta b{color:var(--muted);font-weight:500}
+
+.track{height:2px;background:var(--rule);margin:0 20px;border-radius:2px;overflow:hidden}
+.track i{display:block;height:100%;width:0;background:var(--mark);transition:width .18s linear}
+
+main{padding:16px 20px 80px}
+.wrap{border:1px solid var(--rule);border-radius:4px;overflow:hidden;background:var(--panel)}
+table{width:100%;border-collapse:collapse}
+thead th{position:sticky;top:0;background:var(--raise);text-align:right;padding:9px 12px;
+  font-family:var(--mono);font-size:10.5px;font-weight:500;color:var(--muted);
+  letter-spacing:.10em;text-transform:uppercase;border-bottom:1px solid var(--rule);white-space:nowrap}
+thead th.l{text-align:left}
+tbody td{padding:9px 12px;text-align:right;border-bottom:1px solid rgba(38,48,61,.6);
+  font-family:var(--mono);font-size:12.5px;white-space:nowrap}
+tbody td.l{text-align:left}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:var(--raise)}
+tbody tr.sel{background:var(--raise);box-shadow:inset 2px 0 0 var(--mark)}
+.rank{color:var(--dim);font-size:11px}
+.sym{font-weight:600;font-size:13px;letter-spacing:.02em;font-family:var(--sans)}
+.score{color:var(--mark);font-weight:600}
+.good{color:var(--live)} .bad{color:var(--stop)} .mut{color:var(--muted)}
+.glyph{width:104px;height:26px;display:block}
+
+.badge{display:inline-block;padding:1px 6px;border-radius:2px;font-family:var(--mono);
+  font-size:10px;letter-spacing:.06em;text-transform:uppercase;font-weight:500}
+.b-clear{background:rgba(111,211,181,.14);color:var(--live)}
+.b-caution{background:rgba(232,185,74,.16);color:var(--mark)}
+.b-avoid{background:rgba(226,104,95,.16);color:var(--stop)}
+.b-off{background:rgba(126,141,160,.12);color:var(--dim)}
+.soon{color:var(--mark)}
+.rate{display:flex;gap:0;border:1px solid var(--rule);border-radius:3px;overflow:hidden}
+.rate button{padding:6px 11px;font-family:var(--mono);font-size:11px;letter-spacing:.05em;
+  color:var(--muted);border-right:1px solid var(--rule)}
+.rate button:last-child{border-right:none}
+.rate button:hover{color:var(--text)}
+.rate button.on{background:var(--raise);color:var(--mark)}
+.pulse{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--live);
+  margin-right:5px;animation:beat 2s ease-in-out infinite}
+@keyframes beat{0%,100%{opacity:1}50%{opacity:.25}}
+.px{font-variant-numeric:tabular-nums}
+.s-chase{color:var(--mark)} .s-stopped{color:var(--stop)} .s-target{color:var(--live)}
+.s-better{color:var(--live)} .s-at_entry{color:var(--text)}
+tr.prov{opacity:.72}
+tr.prov .sym::after{content:"·prov";font-family:var(--mono);font-size:9px;color:var(--mark);
+  margin-left:5px;letter-spacing:.05em;vertical-align:super}
+.story{padding:9px 0;border-bottom:1px solid rgba(38,48,61,.6);font-size:12.5px;line-height:1.45}
+.story:last-child{border:none}
+.story a{color:var(--text);text-decoration:none}
+.story a:hover{text-decoration:underline}
+.story .src{display:block;margin-top:3px;color:var(--dim);font-family:var(--mono);font-size:10.5px;letter-spacing:.04em}
+.bear{margin:10px 0 0;padding:10px 12px;border-left:2px solid var(--stop);
+  background:rgba(226,104,95,.06);font-size:12.5px;line-height:1.55;color:var(--text)}
+.bear b{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--stop);margin-bottom:5px;font-weight:500}
+.tflag{display:grid;grid-template-columns:auto 1fr;gap:8px;padding:5px 0;font-size:12px;
+  line-height:1.45;color:var(--muted)}
+.tflag .w{font-family:var(--mono);font-size:9px;padding:1px 4px;border-radius:2px;height:fit-content;
+  background:rgba(232,185,74,.14);color:var(--mark)}
+.tflag .w.h{background:rgba(226,104,95,.16);color:var(--stop)}
+.tgrid{display:grid;grid-template-columns:1fr 1fr;gap:2px 14px;font-family:var(--mono);font-size:11.5px}
+.tgrid div{display:flex;justify-content:space-between;padding:3px 0}
+.tgrid span{color:var(--muted)}
+.verdict{display:flex;align-items:center;gap:9px;margin-bottom:9px}
+.verdict .conf{color:var(--dim);font-family:var(--mono);font-size:11px}
+.reasons{margin:0;padding-left:16px;color:var(--muted);font-size:12.5px;line-height:1.55}
+.mode{margin-top:10px;color:var(--dim);font-family:var(--mono);font-size:10.5px;letter-spacing:.05em}
+
+.chatwrap{display:flex;flex-direction:column;height:calc(100vh - 230px);min-height:380px}
+.msgs{flex:1;overflow-y:auto;padding:4px 2px}
+.msg{max-width:78%;margin-bottom:12px;padding:11px 14px;border-radius:8px;
+  font-size:13.5px;line-height:1.6;white-space:pre-wrap;word-wrap:break-word}
+.msg.you{margin-left:auto;background:var(--raise);border:1px solid var(--rule)}
+.msg.bot{background:var(--panel);border:1px solid var(--rule)}
+.msg.err{background:rgba(226,104,95,.09);border-color:rgba(226,104,95,.4)}
+.tools{margin-top:9px;padding-top:8px;border-top:1px solid var(--rule);
+  font-family:var(--mono);font-size:10.5px;color:var(--dim);letter-spacing:.03em}
+.tools span{display:inline-block;margin-right:8px}
+.composer{display:flex;gap:8px;padding-top:12px;border-top:1px solid var(--rule)}
+.composer textarea{flex:1;min-height:46px;max-height:150px;padding:11px 13px;resize:vertical;
+  background:var(--ink);color:var(--text);border:1px solid var(--rule);border-radius:4px;
+  font-family:var(--sans);font-size:13.5px;line-height:1.5}
+.composer textarea:focus{border-color:var(--muted);outline:none}
+.composer button{padding:0 20px;background:var(--text);color:var(--ink);border-radius:4px;
+  font-weight:600;font-size:13px}
+.composer button[disabled]{background:var(--raise);color:var(--dim)}
+.hint{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px}
+.hint button{padding:5px 11px;border:1px solid var(--rule);border-radius:14px;
+  font-size:11.5px;color:var(--muted)}
+.hint button:hover{border-color:var(--mark);color:var(--mark)}
+.chatnote{color:var(--dim);font-size:11.5px;line-height:1.5;margin:0 0 14px}
+
+/* chat dock: available from every tab */
+.fab{position:fixed;right:22px;bottom:22px;z-index:40;width:52px;height:52px;border-radius:50%;
+  background:var(--text);color:var(--ink);font-size:21px;font-weight:600;
+  box-shadow:0 4px 20px rgba(0,0,0,.5);display:grid;place-items:center}
+.fab:hover{transform:translateY(-1px)}
+.fab.open{background:var(--raise);color:var(--muted);border:1px solid var(--rule)}
+.dock{position:fixed;right:22px;bottom:86px;z-index:39;width:min(420px,calc(100vw - 44px));
+  height:min(560px,calc(100vh - 140px));background:var(--panel);border:1px solid var(--rule);
+  border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,.55);display:flex;flex-direction:column;
+  transform:translateY(10px) scale(.98);opacity:0;pointer-events:none;transition:all .16s ease}
+.dock.open{transform:none;opacity:1;pointer-events:auto}
+.dock.wide{width:min(760px,calc(100vw - 44px));height:min(80vh,calc(100vh - 140px))}
+.dockhead{display:flex;align-items:center;gap:9px;padding:11px 14px;border-bottom:1px solid var(--rule)}
+.dockhead h4{margin:0;font-size:13px;font-weight:600;letter-spacing:.01em}
+.dockhead .m{font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.04em}
+.dockhead .acts{margin-left:auto;display:flex;gap:4px}
+.dockhead .acts button{padding:3px 8px;font-family:var(--mono);font-size:10px;
+  color:var(--muted);border:1px solid var(--rule);border-radius:3px}
+.dockhead .acts button:hover{border-color:var(--mark);color:var(--mark)}
+.msgs{flex:1;overflow-y:auto;padding:14px}
+.msg{max-width:88%;margin-bottom:11px;padding:10px 13px;border-radius:8px;
+  font-size:13px;line-height:1.55;white-space:pre-wrap;word-wrap:break-word}
+.msg.you{margin-left:auto;background:var(--raise);border:1px solid var(--rule)}
+.msg.bot{background:var(--ink);border:1px solid var(--rule)}
+.msg.err{background:rgba(226,104,95,.09);border-color:rgba(226,104,95,.4)}
+.tools{margin-top:8px;padding-top:7px;border-top:1px solid var(--rule);
+  font-family:var(--mono);font-size:10px;color:var(--dim)}
+.tools span{margin-right:7px}
+.composer{display:flex;gap:7px;padding:11px;border-top:1px solid var(--rule)}
+.composer textarea{flex:1;min-height:40px;max-height:120px;padding:9px 11px;resize:none;
+  background:var(--ink);color:var(--text);border:1px solid var(--rule);border-radius:4px;
+  font-family:var(--sans);font-size:13px;line-height:1.5}
+.composer textarea:focus{border-color:var(--muted);outline:none}
+.composer button{padding:0 15px;background:var(--text);color:var(--ink);border-radius:4px;
+  font-weight:600;font-size:12.5px}
+.composer button[disabled]{background:var(--raise);color:var(--dim)}
+.hint{display:flex;gap:6px;flex-wrap:wrap;padding:0 14px 10px}
+.hint button{padding:4px 9px;border:1px solid var(--rule);border-radius:12px;
+  font-size:11px;color:var(--muted)}
+.hint button:hover{border-color:var(--mark);color:var(--mark)}
+.thinking{color:var(--dim);font-size:12px;padding:0 14px 10px;font-family:var(--mono)}
+.tabs{display:flex;gap:2px;padding:0 20px;border-bottom:1px solid var(--rule)}
+.tabs button{padding:10px 15px;font-size:13px;font-weight:500;color:var(--muted);
+  border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button:hover{color:var(--text)}
+.tabs button.on{color:var(--text);border-bottom-color:var(--mark)}
+.tabs .n{display:inline-block;margin-left:6px;padding:0 5px;border-radius:8px;
+  background:var(--raise);font-family:var(--mono);font-size:10px;color:var(--muted)}
+.tabs button.on .n{background:rgba(232,185,74,.16);color:var(--mark)}
+.view{display:none} .view.on{display:block}
+
+/* ---- backtest ---- */
+.btwrap{display:grid;grid-template-columns:296px 1fr;gap:16px;align-items:start}
+@media (max-width:900px){.btwrap{grid-template-columns:1fr}}
+.hero{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+@media (max-width:820px){.hero{grid-template-columns:repeat(2,1fr)}}
+.hero div{border:1px solid var(--rule);border-radius:4px;background:var(--panel);padding:11px 13px}
+.hero .l{font-family:var(--mono);font-size:9.5px;letter-spacing:.10em;
+  text-transform:uppercase;color:var(--dim)}
+.hero .v{font-family:var(--mono);font-size:19px;font-weight:600;margin-top:4px;letter-spacing:-.01em}
+.hero .s{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:2px}
+.bt2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:760px){.bt2{grid-template-columns:1fr}}
+.eq{width:100%;height:170px;display:block}
+.checkrow{display:flex;align-items:center;gap:8px;margin-bottom:9px;
+  font-family:var(--mono);font-size:11px;color:var(--muted)}
+.checkrow input{width:auto}
+.covline{margin:0 0 10px;font-family:var(--mono);font-size:10.5px;color:var(--dim);line-height:1.7}
+.covline b{color:var(--muted);font-weight:500}
+.runrow{display:grid;grid-template-columns:1fr auto 16px;gap:8px;align-items:center;
+  padding:7px 0;border-bottom:1px solid rgba(38,48,61,.6);font-size:12.5px}
+.runrow .go{text-align:left;font-size:12.5px}
+.runrow .go:hover{color:var(--mark)}
+.runrow .k{font-family:var(--mono);font-size:10.5px;color:var(--dim)}
+.thin{font-family:var(--mono);font-size:11px;color:var(--dim);margin:0 0 12px;line-height:1.6}
+.rbar{display:grid;grid-template-columns:102px 1fr 46px;gap:8px;align-items:center;
+  font-family:var(--mono);font-size:11px;color:var(--muted);padding:3px 0}
+.rbar i{display:block;height:5px;border-radius:2px;background:var(--muted)}
+.rbar.stop i{background:var(--stop)} .rbar.target i{background:var(--live)}
+.rbar.time i{background:var(--mark)} .rbar b{text-align:right;font-weight:500}
+
+.mark{display:inline-block;width:13px;text-align:center;font-size:11px;cursor:help}
+.m0{color:var(--dim)} .m1{color:var(--muted)} .m2{color:var(--mark)} .m3{color:var(--stop)}
+
+.card{border:1px solid var(--rule);border-radius:4px;background:var(--panel);
+  padding:14px 16px;margin-bottom:9px}
+.card.sev3{border-left:2px solid var(--stop)}
+.card.sev2{border-left:2px solid var(--mark)}
+.card h5{margin:0;font-size:14px;font-weight:600;letter-spacing:.01em}
+.card .top{display:flex;align-items:center;gap:9px;margin-bottom:9px;flex-wrap:wrap}
+.card .when{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--dim)}
+.card .why{margin:0;padding-left:16px;color:var(--muted);font-size:12.5px;line-height:1.6}
+.card .srcs{margin-top:9px;font-family:var(--mono);font-size:10.5px;color:var(--dim);letter-spacing:.04em}
+.card .soc{margin:8px 0 0;font-size:12.5px;color:var(--muted);font-style:italic}
+
+.feedrow{display:grid;grid-template-columns:66px 1fr;gap:12px;padding:10px 0;
+  border-bottom:1px solid rgba(38,48,61,.6);font-size:13px;line-height:1.5}
+.feedrow:last-child{border:none}
+.feedrow .fs{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.02em}
+.feedrow a{color:var(--text);text-decoration:none}
+.feedrow a:hover{text-decoration:underline}
+.feedrow .meta2{display:block;margin-top:3px;font-family:var(--mono);font-size:10.5px;color:var(--dim)}
+.kind{display:inline-block;padding:0 4px;border-radius:2px;font-family:var(--mono);
+  font-size:9px;letter-spacing:.06em;text-transform:uppercase}
+.k-news{background:rgba(126,141,160,.16);color:var(--muted)}
+.k-social{background:rgba(232,185,74,.14);color:var(--mark)}
+.plotbtn{margin-top:10px;width:100%;padding:9px;border:1px solid var(--rule);border-radius:3px;
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;color:var(--muted)}
+.plotbtn:hover{border-color:var(--mark);color:var(--mark)}
+.plotbtn[disabled]{opacity:.5;cursor:default}
+.plotall{padding:9px 14px;border:1px solid var(--rule);border-radius:3px;
+  font-family:var(--mono);font-size:11px;letter-spacing:.05em;color:var(--muted)}
+.plotall:hover{border-color:var(--mark);color:var(--mark)}
+.plotted{color:var(--mark)}
+.bwrap{display:grid;grid-template-columns:1fr 300px;gap:16px}
+@media (max-width:900px){.bwrap{grid-template-columns:1fr}}
+.bpanel{border:1px solid var(--rule);border-radius:4px;background:var(--panel);padding:16px}
+.bpanel h4{margin:0 0 12px;font-family:var(--mono);font-size:10.5px;font-weight:500;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.grow{display:grid;grid-template-columns:1fr 90px 96px 28px;gap:6px;margin-bottom:6px;align-items:center}
+.grow.args{grid-template-columns:1fr;margin:-2px 0 10px}
+select,input[type=text],input[type=number]{width:100%;padding:6px 8px;background:var(--ink);
+  color:var(--text);border:1px solid var(--rule);border-radius:3px;font-family:var(--mono);font-size:11.5px}
+select:hover,input:hover{border-color:var(--muted)}
+.argline{display:flex;gap:6px;flex-wrap:wrap;font-family:var(--mono);font-size:10.5px;color:var(--dim)}
+.argline label{display:flex;align-items:center;gap:4px}
+.argline input{width:52px;padding:2px 4px}
+.xbtn{color:var(--dim);font-size:15px;line-height:1}
+.xbtn:hover{color:var(--stop)}
+.addg{margin-top:4px;padding:6px 10px;border:1px dashed var(--rule);border-radius:3px;
+  font-family:var(--mono);font-size:11px;color:var(--muted);width:100%}
+.addg:hover{border-color:var(--mark);color:var(--mark)}
+.brow{display:grid;grid-template-columns:110px 1fr;gap:8px;align-items:center;margin-bottom:8px}
+.brow span{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.bact{display:flex;gap:8px;margin-top:14px}
+.bact button{flex:1;padding:9px;border:1px solid var(--rule);border-radius:3px;
+  font-family:var(--mono);font-size:11px;letter-spacing:.05em;color:var(--muted)}
+.bact button:hover{border-color:var(--mark);color:var(--mark)}
+.bact button.primary{background:var(--text);color:var(--ink);border-color:var(--text);font-weight:600}
+.stat{display:flex;justify-content:space-between;padding:5px 0;font-family:var(--mono);
+  font-size:11.5px;border-bottom:1px solid rgba(38,48,61,.6)}
+.stat b{font-weight:500}
+.bar2{height:4px;background:var(--rule);border-radius:2px;overflow:hidden;margin-top:3px}
+.bar2 i{display:block;height:100%;background:var(--stop)}
+.rej{margin-bottom:9px;font-family:var(--mono);font-size:11px;color:var(--muted)}
+.warn2{padding:9px 11px;border-radius:3px;background:rgba(232,185,74,.08);
+  border:1px solid rgba(232,185,74,.35);font-size:12px;line-height:1.5;margin-bottom:7px}
+.kill{padding:9px 14px;border:1px solid rgba(226,104,95,.5);border-radius:3px;
+  font-family:var(--mono);font-size:11px;letter-spacing:.05em;color:var(--stop)}
+.kill:hover{background:rgba(226,104,95,.12)}
+.kill.on{background:var(--stop);color:var(--ink);font-weight:600}
+.botcard{border:1px solid var(--rule);border-radius:4px;background:var(--panel);
+  padding:14px 16px;margin-bottom:10px}
+.botcard.live{border-left:2px solid var(--stop)}
+.botcard .top{display:flex;align-items:center;gap:9px;margin-bottom:10px;flex-wrap:wrap}
+.botcard h5{margin:0;font-size:14px;font-weight:600}
+.botcard .acts{margin-left:auto;display:flex;gap:6px}
+.botcard .acts button{padding:4px 9px;border:1px solid var(--rule);border-radius:3px;
+  font-family:var(--mono);font-size:10px;letter-spacing:.05em;color:var(--muted)}
+.botcard .acts button:hover{border-color:var(--mark);color:var(--mark)}
+.ev{display:grid;grid-template-columns:74px 62px 1fr auto;gap:8px;padding:5px 0;
+  font-family:var(--mono);font-size:11px;border-bottom:1px solid rgba(38,48,61,.5)}
+.ev .t{color:var(--dim)}
+.e-opened{color:var(--live)} .e-closed{color:var(--text)} .e-halted{color:var(--stop)}
+.e-skipped{color:var(--dim)} .e-partial,.e-stop_to_be,.e-trailed{color:var(--mark)}
+.pos{color:var(--live)} .neg{color:var(--stop)}
+.exitrow{display:grid;grid-template-columns:1fr 80px 28px;gap:6px;margin-bottom:6px;align-items:center}
+.warnbox{padding:11px 13px;border:1px solid rgba(226,104,95,.4);border-radius:3px;
+  background:rgba(226,104,95,.07);font-size:12.5px;line-height:1.55;margin-bottom:14px}
+.saved{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(38,48,61,.6);font-size:12.5px}
+.saved .k{font-family:var(--mono);font-size:10.5px;color:var(--dim);margin-left:auto}
+.filt{display:flex;gap:8px;align-items:center;margin-bottom:14px}
+.empty{padding:56px 24px;text-align:center;color:var(--muted)}
+.empty h3{margin:0 0 6px;font-size:15px;font-weight:600;color:var(--text)}
+.empty p{margin:0;font-size:13px;line-height:1.6}
+.err{margin:0 0 14px;padding:12px 14px;border:1px solid rgba(226,104,95,.4);
+  border-radius:4px;background:rgba(226,104,95,.08);font-size:13px;line-height:1.55}
+.err code{font-family:var(--mono);font-size:12px;color:var(--mark)}
+
+/* ---- drawer ---- */
+.scrim{position:fixed;inset:0;background:rgba(6,9,13,.6);opacity:0;pointer-events:none;transition:opacity .18s}
+.scrim.open{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(460px,100%);background:var(--panel);
+  border-left:1px solid var(--rule);transform:translateX(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);
+  overflow-y:auto;z-index:5}
+.drawer.open{transform:none}
+.dhead{display:flex;align-items:center;gap:12px;padding:18px 20px 14px;border-bottom:1px solid var(--rule)}
+.dhead h2{margin:0;font-size:18px;font-weight:600;letter-spacing:.01em}
+.dhead .close{margin-left:auto;color:var(--muted);font-size:20px;line-height:1;padding:4px 8px}
+.dsec{padding:16px 20px;border-bottom:1px solid var(--rule)}
+.dsec h4{margin:0 0 12px;font-family:var(--mono);font-size:10.5px;font-weight:500;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.chart{width:100%;height:132px;display:block}
+
+.ladder{display:flex;flex-direction:column;gap:8px}
+.gate{display:grid;grid-template-columns:14px 1fr;gap:10px;align-items:start;font-size:12.5px}
+.gate .k{width:14px;height:14px;margin-top:1px;border-radius:2px;display:grid;place-items:center;
+  font-size:9px;font-weight:700;font-family:var(--mono)}
+.gate.ok .k{background:rgba(111,211,181,.16);color:var(--live)}
+.gate.no .k{background:rgba(226,104,95,.16);color:var(--stop)}
+.gate .n{font-weight:500}
+.gate .d{color:var(--muted);font-family:var(--mono);font-size:11.5px;margin-top:1px}
+
+.ticket{display:grid;grid-template-columns:auto 1fr;gap:7px 16px;font-family:var(--mono);font-size:12.5px}
+.ticket dt{color:var(--muted)}
+.ticket dd{margin:0;text-align:right}
+.copy{margin-top:14px;width:100%;padding:9px;border:1px solid var(--rule);border-radius:3px;
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;color:var(--muted)}
+.copy:hover{border-color:var(--muted);color:var(--text)}
+.foot{padding:14px 20px 28px;color:var(--dim);font-size:11.5px;line-height:1.6}
+
+@media (max-width:720px){
+  .hide{display:none}
+  header{flex-wrap:wrap;gap:8px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="regime off" id="regime">
+  <span class="dot"></span>
+  <span class="state" id="rstate">NO INDEX DATA</span>
+  <span class="note" id="rnote">Run a scan to check the index trend.</span>
+  <span class="nums" id="rnums"></span>
+</div>
+
+<header>
+  <h1>Pullback screener <span>/ 50DMA continuation</span></h1>
+</header>
+<p class="sub" style="margin:-6px 20px 14px">
+  Uptrending names that dipped into their 50-day average and closed back above it today.
+  Bars, symbols and account equity come straight from cTrader.
+</p>
+
+<div class="bar">
+  <button class="scan" id="run">Run scan</button>
+  <span class="meta" id="status">idle</span>
+  <span class="rate" id="stratfilter"></span>
+  <button class="plotall" id="plotall" title="Draw the top setups onto their cTrader charts">PLOT TOP 5</button>
+  <span class="rate" id="rate" role="group" aria-label="Price refresh">
+    <button data-q="0">OFF</button>
+    <button data-q="60">1 MIN</button>
+    <button data-q="15">15 S</button>
+    <button data-q="5">5 S</button>
+    <button data-q="1">LIVE</button>
+  </span>
+  <span class="meta" id="tick"></span>
+  <span class="meta" style="margin-left:auto" id="acct"></span>
+</div>
+<div class="track"><i id="prog"></i></div>
+
+<nav class="tabs" id="tabs">
+  <button data-v="screener" class="on">Screener<span class="n" id="n-screener">0</span></button>
+  <button data-v="news">News<span class="n" id="n-news">0</span></button>
+  <button data-v="analysis">Analysis<span class="n" id="n-analysis">0</span></button>
+  <button data-v="important">Important<span class="n" id="n-important">0</span></button>
+  <button data-v="builder">Builder</button>
+  <button data-v="backtest">Backtest</button>
+  <button data-v="bots">Bots</button>
+</nav>
+
+<main>
+  <div id="alert"></div>
+
+  <section class="view on" id="v-screener">
+  <div class="wrap">
+    <table>
+      <thead><tr>
+        <th class="l" style="width:34px">#</th>
+        <th class="l" style="width:96px">Symbol</th>
+        <th class="l" style="width:104px">Strategy</th>
+        <th class="l hide" style="width:112px">Shape</th>
+        <th style="width:54px">Score</th>
+        <th>Entry</th><th>Last</th><th>Stop</th><th>Target</th>
+        <th>Risk</th><th>R</th><th>Units</th>
+        <th class="l" style="width:112px">Catalyst</th>
+        <th class="hide">Vol</th><th class="hide">Dip</th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="empty" id="empty">
+      <h3>Nothing scanned yet</h3>
+      <p>Start cTrader, then run a scan. First run backfills history and takes a few minutes.</p>
+    </div>
+  </div>
+  </section>
+
+  <section class="view" id="v-news">
+    <div class="filt">
+      <span class="rate" id="feedkind">
+        <button data-k="" class="on">ALL</button>
+        <button data-k="news">NEWS</button>
+        <button data-k="social">SOCIAL</button>
+      </span>
+      <span class="meta" id="feedmeta"></span>
+    </div>
+    <div id="feedbody"></div>
+  </section>
+
+  <section class="view" id="v-analysis"><div id="anbody"></div></section>
+  <section class="view" id="v-important"><div id="impbody"></div></section>
+
+  <section class="view" id="v-bots">
+    <div id="killbox" style="margin-bottom:14px"></div>
+    <div class="bwrap">
+      <div>
+        <div class="bpanel">
+          <h4>New bot</h4>
+          <div class="brow"><span>Name</span><input type="text" id="botlabel" placeholder="Dip bot"></div>
+          <div class="brow"><span>Key</span><input type="text" id="botkey" placeholder="dip_bot"></div>
+          <div class="brow"><span>Entries from</span><select id="botsrc"></select></div>
+          <div class="brow"><span>Risk / trade %</span>
+            <input type="number" id="botrisk" value="1.0" step="0.1" min="0.1" max="5"></div>
+        </div>
+        <div class="bpanel" style="margin-top:12px">
+          <h4>Exit rules</h4>
+          <div id="exitrows"></div>
+          <button class="addg" id="addexit">+ ADD EXIT RULE</button>
+        </div>
+        <div class="bpanel" style="margin-top:12px">
+          <h4>Caps — these are what stop it</h4>
+          <div id="caprows"></div>
+          <div class="bact">
+            <button id="botsave" class="primary">SAVE AS PAPER BOT</button>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="bpanel"><h4>Bots</h4><div id="botlist"></div></div>
+        <div class="bpanel" style="margin-top:12px"><h4>Activity</h4><div id="botevents"></div></div>
+      </div>
+    </div>
+  </section>
+
+
+
+  <section class="view" id="v-builder">
+    <div class="bwrap">
+      <div>
+        <div class="bpanel">
+          <h4>Gates — all must pass</h4>
+          <div id="gates"></div>
+          <button class="addg" id="addgate">+ ADD GATE</button>
+        </div>
+        <div class="bpanel" style="margin-top:12px">
+          <h4>Levels</h4>
+          <div class="brow"><span>Stop</span><div id="stopwrap"></div></div>
+          <div class="brow"><span>Target</span><div id="targetwrap"></div></div>
+          <div class="brow"><span>Min reward</span>
+            <input type="number" id="minrr" value="1.5" step="0.1" min="0"></div>
+          <div class="brow"><span>Regime</span>
+            <select id="regimesel">
+              <option value="bull">Only when the index is in an uptrend</option>
+              <option value="bear">Only when the index is not</option>
+              <option value="">Any regime</option>
+            </select></div>
+          <div class="brow"><span>Name</span>
+            <input type="text" id="blabel" placeholder="My dip buy"></div>
+          <div class="brow"><span>Key</span>
+            <input type="text" id="bkey" placeholder="my_dip_buy"></div>
+          <div class="bact">
+            <button id="btest" class="primary">TEST ON CACHED BARS</button>
+            <button id="bsave">SAVE &amp; ENABLE</button>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="bpanel">
+          <h4>Result</h4>
+          <div id="bresult"><p class="reasons" style="padding:0">Build a gate set, then test it
+            against the bars already in your cache. Nothing is sent to cTrader.</p></div>
+        </div>
+        <div class="bpanel" style="margin-top:12px">
+          <h4>Saved strategies</h4>
+          <div id="bsaved"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="view" id="v-backtest">
+    <div class="btwrap">
+      <div>
+        <div class="bpanel">
+          <h4>Bar cache</h4>
+          <p class="covline" id="btcov">reading…</p>
+          <div class="brow"><span>Fetch bars</span>
+            <input type="number" id="bfbars" value="1000" step="100" min="100" max="1000"></div>
+          <div class="checkrow">
+            <input type="checkbox" id="bfshort" checked>
+            <label for="bfshort">only symbols that are short</label></div>
+          <div class="bact">
+            <button id="bfrun">DEEPEN HISTORY</button>
+          </div>
+          <p class="thin" style="margin:10px 0 0">Pulls up to 1000 daily bars per
+            symbol from cTrader. Needs cTrader running. Slow the first time.</p>
+        </div>
+
+        <div class="bpanel" style="margin-top:12px">
+          <h4>Run</h4>
+          <div class="brow"><span>Strategy</span><select id="btstrat"></select></div>
+          <div class="brow"><span>Symbols</span>
+            <input type="number" id="btsymbols" value="120" step="10" min="0"></div>
+          <div class="brow"><span>History bars</span>
+            <input type="number" id="bthistory" value="0" step="100" min="0"></div>
+          <div class="brow"><span>Time stop</span>
+            <input type="number" id="bthold" value="40" step="5" min="1"></div>
+          <div class="brow"><span>Cost bps</span>
+            <input type="number" id="btcost" value="5" step="1" min="0"></div>
+          <div class="brow"><span>Risk / trade %</span>
+            <input type="number" id="btrisk" value="1.0" step="0.1" min="0.1"></div>
+          <div class="brow"><span>Max open</span>
+            <input type="number" id="btmaxopen" value="8" step="1" min="1"></div>
+          <div class="brow"><span>Equity</span>
+            <input type="number" id="btequity" value="10000" step="1000" min="100"></div>
+          <div class="checkrow">
+            <input type="checkbox" id="btregime" checked>
+            <label for="btregime">honour the regime filter</label></div>
+          <div class="bact">
+            <button id="btrun" class="primary">RUN BACKTEST</button>
+          </div>
+          <p class="thin" style="margin:10px 0 0" id="btcost2">0 symbols = every cached
+            symbol, 0 history = every cached bar.</p>
+        </div>
+
+        <div class="bpanel" style="margin-top:12px">
+          <h4>Past runs</h4>
+          <div id="btruns"></div>
+        </div>
+      </div>
+
+      <div id="btresult">
+        <div class="empty">
+          <h3>Nothing walked yet</h3>
+          <p>The screener says a setup exists. This says whether that kind of setup
+             paid, on the bars you already have. Price and volume only — no news,
+             no chatter, no model.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+
+<button class="fab" id="fab" title="Ask the assistant (Ctrl+K)">&#9679;</button>
+<aside class="dock" id="dock" aria-hidden="true">
+  <div class="dockhead">
+    <h4>Assistant</h4><span class="m" id="dockmodel"></span>
+    <div class="acts">
+      <button id="dockwide" title="Toggle width">WIDE</button>
+      <button id="dockclear" title="Clear conversation">CLEAR</button>
+      <button id="dockclose">&times;</button>
+    </div>
+  </div>
+  <div class="msgs" id="msgs"></div>
+  <div class="thinking" id="thinking" hidden>working…</div>
+  <div class="hint" id="chathints">
+    <button>What passed today and why?</button>
+    <button>How is my screener configured?</button>
+    <button>Which gate rejects the most?</button>
+  </div>
+  <div class="composer">
+    <textarea id="chatin" placeholder="Ask about setups, strategies, backtests…"></textarea>
+    <button id="chatsend">Send</button>
+  </div>
+</aside>
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="dhead">
+    <h2 id="dsym">—</h2><span class="meta" id="dasof"></span>
+    <button class="close" id="dclose" aria-label="Close">×</button>
+  </div>
+  <div class="dsec"><h4>Last 160 sessions</h4><svg class="chart" id="dchart"></svg></div>
+  <div class="dsec"><h4>Gates</h4><div class="ladder" id="dgates"></div></div>
+  <div class="dsec" id="dreview" hidden><h4>Review</h4><div id="dreviewbody"></div></div>
+  <div class="dsec" id="dtape" hidden><h4>Tape</h4><div id="dtapebody"></div></div>
+  <div class="dsec" id="dnews" hidden><h4>Headlines</h4><div id="dnewsbody"></div></div>
+  <div class="dsec">
+    <h4>Order ticket</h4>
+    <dl class="ticket" id="dticket"></dl>
+    <button class="copy" id="dcopy">COPY TICKET</button>
+    <button class="plotbtn" id="dplot">PLOT ON CTRADER CHART</button>
+    <button class="plotbtn" id="dunplot" style="margin-top:6px">CLEAR MY OBJECTS</button>
+  </div>
+  <p class="foot">Sizing uses the ATR stop and live account equity. The 5% stop from the
+     original rules is shown for reference only. Nothing is sent to the broker — place it yourself.</p>
+</aside>
+
+<script>
+const $ = s => document.querySelector(s);
+const fmt = (n, d = 2) => n == null ? "—" : Number(n).toLocaleString("en-US",
+  {minimumFractionDigits: d, maximumFractionDigits: d});
+let ROWS = [], SEL = null, LIVE = {}, FORMING = {}, CLOCKS = {}, PLOTTED = new Set(), UNQUOTED = [];
+let STRATS = [], STRATFILTER = "";
+
+function paintStratFilter() {
+  const on = STRATS.filter(s => s.enabled);
+  const el = $("#stratfilter");
+  if (on.length < 2) { el.innerHTML = ""; return; }
+  el.innerHTML = [{key: "", label: "ALL"}].concat(on).map(s =>
+    `<button data-s="${s.key}" class="${s.key === STRATFILTER ? "on" : ""}"
+      title="${s.description || ""}">${(s.label || "ALL").toUpperCase()}</button>`).join("");
+  el.querySelectorAll("button").forEach(b => b.onclick = () => {
+    STRATFILTER = b.dataset.s; paintStratFilter(); render();
+  });
+}
+
+function liveCell(r) {
+  const l = LIVE[r.symbol];
+  if (!l) return (UNQUOTED || []).includes(r.symbol)
+    ? `<span class="mut" title="cTrader is not subscribed to this symbol. Plot it to open a chart and it becomes quotable.">no feed</span>`
+    : `<span class="mut">—</span>`;
+  const arrow = l.from_entry > 0 ? "▲" : l.from_entry < 0 ? "▼" : "·";
+  return `${fmt(l.price)} <span style="font-size:11px">${arrow}${Math.abs(l.from_entry).toFixed(2)}%</span>`;
+}
+
+/* Patch only the price cells — a full re-render every second would fight
+   the user's scroll position and kill any open drawer. */
+function paintLive() {
+  document.querySelectorAll("[data-px]").forEach(td => {
+    const sym = td.dataset.px, r = ROWS.find(x => x.symbol === sym);
+    if (!r) return;
+    const l = LIVE[sym];
+    td.className = "px s-" + ((l || {}).state || "");
+    td.innerHTML = liveCell(r);
+    if (l) td.title = l.note;
+  });
+  const n = Object.keys(LIVE).length;
+  const un = (UNQUOTED || []).length;
+  $("#tick").innerHTML = CLOCKS.quote_interval > 0 && n
+    ? `<span class="pulse"></span>${n} live` +
+      (un ? ` <span class="mut" title="cTrader only quotes subscribed symbols. ` +
+            `Open a chart for these (plot them) to make them quotable: ` +
+            `${UNQUOTED.join(", ")}">· ${un} unquoted</span>` : "")
+    : CLOCKS.quote_interval > 0 ? `<span class="pulse"></span>waiting for quotes` : "prices frozen";
+}
+
+function paintForming() {
+  document.querySelectorAll("#rows tr").forEach(tr => {
+    const f = FORMING[tr.dataset.sym];
+    tr.classList.toggle("prov", !!(f && !f.pass));
+    if (f && !f.pass) tr.title = `On the open bar this no longer passes: ${f.failed.join(", ")}`;
+  });
+}
+
+function setRate(v) {
+  CLOCKS.quote_interval = v;
+  document.querySelectorAll("#rate button").forEach(b =>
+    b.classList.toggle("on", Number(b.dataset.q) === v));
+  fetch("/api/clocks", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({quote_interval: v})});
+  paintLive();
+}
+document.querySelectorAll("#rate button").forEach(b =>
+  b.onclick = () => setRate(Number(b.dataset.q)));
+
+/* ---------- inline setup glyph: close line + 50DMA + the dip ---------- */
+function glyph(sp) {
+  const W = 104, H = 26, P = 2, c = sp.c, m = sp.m;
+  const vals = c.concat(m.filter(x => x != null));
+  const lo = Math.min(...vals), hi = Math.max(...vals), rng = (hi - lo) || 1;
+  const x = i => P + i * (W - 2 * P) / (c.length - 1);
+  const y = v => H - P - (v - lo) / rng * (H - 2 * P);
+  const path = a => a.map((v, i) => v == null ? null : `${i && a[i-1] != null ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`)
+                     .filter(Boolean).join("");
+  const li = Math.max(0, Math.min(c.length - 1, sp.lo));
+  return `<svg class="glyph" viewBox="0 0 ${W} ${H}" aria-hidden="true">
+    <path d="${path(m)}" fill="none" stroke="#556375" stroke-width="1" stroke-dasharray="2 2"/>
+    <path d="${path(c)}" fill="none" stroke="#e7ecf3" stroke-width="1.2"/>
+    <circle cx="${x(li).toFixed(1)}" cy="${y(c[li]).toFixed(1)}" r="1.9" fill="#e2685f"/>
+    <circle cx="${x(c.length-1).toFixed(1)}" cy="${y(c[c.length-1]).toFixed(1)}" r="2.4" fill="#6fd3b5"/>
+  </svg>`;
+}
+
+/* ---------- table ---------- */
+function render() {
+  const tb = $("#rows"), em = $("#empty");
+  FORMING = FORMING || {};
+  const shown = STRATFILTER ? ROWS.filter(r => r.strategy === STRATFILTER) : ROWS;
+  tb.innerHTML = "";
+  em.style.display = shown.length ? "none" : "block";
+  shown.forEach(r => {
+    const tr = document.createElement("tr");
+    tr.dataset.sym = r.symbol;
+    tr.innerHTML = `
+      <td class="l rank">${r.rank}</td>
+      <td class="l"><span class="sym">${r.symbol}</span></td>
+      <td class="l mut" style="font-size:11px">${r.strategy_label || r.strategy || ""}</td>
+      <td class="l hide">${glyph(r.spark)}</td>
+      <td class="score">${fmt(r.score, 1)}</td>
+      <td>${fmt(r.entry)}</td>
+      <td class="px s-${(LIVE[r.symbol]||{}).state||""}" data-px="${r.symbol}">${liveCell(r)}</td>
+      <td class="bad">${fmt(r.stop)}</td>
+      <td class="good">${fmt(r.target)}</td>
+      <td class="mut">${fmt(r.stop_pct)}%</td>
+      <td>${fmt(r.rr)}</td>
+      <td>${fmt(r.units)}</td>
+      <td class="l">${catalystCell(r)}</td>
+      <td class="hide mut">${fmt(r.vol_ratio)}×</td>
+      <td class="hide mut">${fmt(r.depth * 100, 1)}%</td>`;
+    tr.onclick = () => open(r.symbol);
+    tb.appendChild(tr);
+  });
+  paintLive(); paintForming();
+}
+
+const MARKS = {0: "○", 1: "◔", 2: "◑", 3: "●"};
+const MARKLBL = {0: "reviewed, nothing notable", 1: "reviewed, minor note",
+                 2: "reviewed, important", 3: "reviewed, blocking"};
+
+function analysedMark(r) {
+  const l = r.llm;
+  if (!l || l.verdict === "off") return `<span class="mark m0" title="not reviewed">·</span>`;
+  if (l.verdict === "error") return `<span class="mark m1" title="review failed">!</span>`;
+  const sev = l.severity ?? 0, sc = l.sources || {};
+  const tip = `${MARKLBL[sev]} — ${sc.news || 0} headlines, ${sc.social || 0} posts`;
+  return `<span class="mark m${sev}" title="${tip}">${MARKS[sev]}</span>`;
+}
+
+function catalystCell(r) {
+  const e = r.earnings || {}, v = (r.llm || {}).verdict;
+  const days = e.days_out == null ? `<span class="mut">no date</span>`
+    : e.days_out <= 20 ? `<span class="soon">E-${e.days_out}</span>`
+    : `<span class="mut">E-${e.days_out}</span>`;
+  const badge = !v || v === "off" ? ""
+    : ` <span class="badge b-${v === "error" ? "off" : v}">${v}</span>`;
+  const tw = (r.tape_flags || []).reduce((a, f) => a + (f.weight || 1), 0);
+  const tfm = tw >= 4 ? ` <span class="badge b-avoid" title="${(r.tape_flags || []).map(f => f.text).join(" · ")}">tape</span>`
+            : tw >= 2 ? ` <span class="badge b-caution" title="${(r.tape_flags || []).map(f => f.text).join(" · ")}">tape</span>` : "";
+  const pl = PLOTTED.has(r.symbol) ? ` <span class="plotted" title="drawn on its cTrader chart">▣</span>` : "";
+  const soc = r.social && r.social.spiking
+    ? ` <span class="badge b-caution" title="${r.social.summary}">chatter</span>` : "";
+  return analysedMark(r) + " " + days + badge + soc + tfm + pl;
+}
+
+/* ---------- drawer ---------- */
+async function open(sym) {
+  SEL = sym;
+  document.querySelectorAll("#rows tr").forEach(t =>
+    t.classList.toggle("sel", t.dataset.sym === sym));
+  $("#drawer").classList.add("open"); $("#drawer").setAttribute("aria-hidden", "false");
+  $("#scrim").classList.add("open");
+  $("#dsym").textContent = sym;
+  $("#dgates").innerHTML = ""; $("#dticket").innerHTML = ""; $("#dchart").innerHTML = "";
+
+  const res = await fetch(`/api/symbol/${encodeURIComponent(sym)}`);
+  if (!res.ok) { $("#dgates").innerHTML = `<p class="mut">No cached bars for ${sym}.</p>`; return; }
+  const { detail: d, bars } = await res.json();
+  $("#dasof").textContent = d.asof;
+
+  drawChart(bars, d);
+
+  $("#dgates").innerHTML = d.gates.map(g => `
+    <div class="gate ${g.ok ? "ok" : "no"}">
+      <span class="k">${g.ok ? "✓" : "✕"}</span>
+      <span><span class="n">${g.name}</span><br><span class="d">${g.detail}</span></span>
+    </div>`).join("");
+
+  const row = ROWS.find(r => r.symbol === sym) || {};
+  const lm = row.llm, st = row.news || [];
+  $("#dreview").hidden = !lm || lm.verdict === "off";
+  if (lm && lm.verdict !== "off") {
+    $("#dreviewbody").innerHTML = `
+      <div class="verdict"><span class="badge b-${lm.verdict === "error" ? "off" : lm.verdict}">${lm.verdict}</span>
+        <span class="conf">${lm.confidence != null ? (lm.confidence * 100).toFixed(0) + "% confidence" : ""}</span>
+        ${lm.catalyst && lm.catalyst !== "none" ? `<span class="conf">· ${lm.catalyst}</span>` : ""}</div>
+      ${(lm.reasons || []).length
+        ? `<ul class="reasons">${lm.reasons.map(x => `<li>${x}</li>`).join("")}</ul>`
+        : `<p class="reasons" style="padding:0;list-style:none">Nothing decision-relevant in the text.</p>`}
+      ${lm.bear_case ? `<div class="bear"><b>Case against</b>${esc(lm.bear_case)}</div>` : ""}
+      ${lm.technical_note ? `<p class="soc" style="margin:8px 0 0">${esc(lm.technical_note)}</p>` : ""}
+      ${lm.social_note ? `<p class="soc" style="margin:8px 0 0">${esc(lm.social_note)}</p>` : ""}
+      ${row.social ? `<div class="mode">chatter: ${esc(row.social.summary)}</div>` : ""}
+      <div class="mode">${lm.model || ""} · ${lm.mode || ""}${lm.cached ? " · cached" : ""}
+        · ${(lm.sources || {}).news || 0} headlines, ${(lm.sources || {}).social || 0} posts
+        · reads text only, never the levels</div>`;
+  }
+  const tp = d.tape || row.tape, tf = d.tape_flags || row.tape_flags || [];
+  $("#dtape").hidden = !tp || !Object.keys(tp).length;
+  if (tp && Object.keys(tp).length) {
+    const cell = (k, v, suf = "") => v == null ? "" :
+      `<div><span>${k}</span><b class="${typeof v === "number" && v < 0 ? "bad" : ""}">${v}${suf}</b></div>`;
+    $("#dtapebody").innerHTML = `
+      <div class="tgrid">
+        ${cell("from 52w high", tp.from_52w_high_pct, "%")}
+        ${cell("vs 200DMA", tp.vs_200dma_pct, "%")}
+        ${cell("1m return", tp.ret_1m_pct, "%")}
+        ${cell("3m return", tp.ret_3m_pct, "%")}
+        ${cell("ATR", tp.atr_pct, "%")}
+        ${cell("vs universe ATR", tp.atr_vs_universe, "x")}
+        ${cell("worst 1y drawdown", tp.worst_dd_1y_pct, "%")}
+        ${cell("volume trend", tp.vol_trend_pct, "%")}
+      </div>
+      ${tf.length ? `<div style="margin-top:11px">${tf.map(f => `
+        <div class="tflag"><span class="w ${f.weight >= 2 ? "h" : ""}">${f.weight >= 2 ? "HIGH" : "note"}</span>
+        <span>${esc(f.text)}</span></div>`).join("")}</div>`
+        : `<p class="rej" style="margin-top:10px">No structural flags.</p>`}`;
+  }
+
+  $("#dnews").hidden = !st.length;
+  if (st.length) $("#dnewsbody").innerHTML = st.map(n => `
+    <div class="story">${n.url ? `<a href="${n.url}" target="_blank" rel="noopener">${n.headline}</a>` : n.headline}
+      <span class="src">${(n.published || "").slice(0,10)} · ${n.source}</span></div>`).join("");
+
+  $("#dticket").innerHTML = `
+    <dt>Entry</dt><dd>${fmt(d.entry)}</dd>
+    <dt>Stop (ATR)</dt><dd class="bad">${fmt(d.stop)} &nbsp;<span class="mut">${fmt(d.stop_pct)}%</span></dd>
+    <dt>Stop (5% rule)</dt><dd class="mut">${fmt(d.stop_fixed5)}</dd>
+    <dt>Target</dt><dd class="good">${fmt(d.target)}</dd>
+    <dt>Reward</dt><dd>${fmt(d.rr)}R</dd>
+    <dt>Units</dt><dd>${fmt(d.units)}</dd>
+    <dt>Risk</dt><dd>${fmt(d.risk_amt)}</dd>
+    <dt>ATR</dt><dd class="mut">${fmt(d.atr_pct)}%</dd>
+    ${row.earnings ? `<dt>Earnings</dt><dd class="mut">${row.earnings.why}</dd>` : ""}`;
+
+  $("#dplot").onclick = async () => {
+    const b = $("#dplot"); b.disabled = true; b.textContent = "DRAWING…";
+    try {
+      const res = await fetch(`/api/plot/${encodeURIComponent(sym)}`, {method: "POST"});
+      const j = await res.json();
+      b.textContent = res.ok
+        ? `DREW ${j.drawn} OBJECTS${j.cleared ? ` · CLEARED ${j.cleared}` : ""}`
+        : (j.detail || "FAILED").slice(0, 60);
+    } catch { b.textContent = "FAILED"; }
+    setTimeout(() => { b.disabled = false; b.textContent = "PLOT ON CTRADER CHART"; }, 3500);
+  };
+  $("#dunplot").onclick = async () => {
+    const b = $("#dunplot"); b.disabled = true;
+    const j = await (await fetch(`/api/plot/${encodeURIComponent(sym)}`, {method: "DELETE"})).json();
+    b.textContent = `REMOVED ${j.removed}`;
+    setTimeout(() => { b.disabled = false; b.textContent = "CLEAR MY OBJECTS"; }, 2500);
+  };
+
+  $("#dcopy").onclick = () => {
+    navigator.clipboard.writeText(
+      `${sym} long ${d.units} @ ${d.entry} | SL ${d.stop} | TP ${d.target} | ${d.rr}R`);
+    $("#dcopy").textContent = "COPIED";
+    setTimeout(() => $("#dcopy").textContent = "COPY TICKET", 1400);
+  };
+}
+
+function drawChart(bars, d) {
+  const W = 420, H = 132, P = 6;
+  const lo = Math.min(...bars.map(b => b.l), d.stop);
+  const hi = Math.max(...bars.map(b => b.h), d.target);
+  const rng = (hi - lo) || 1;
+  const x = i => P + i * (W - 2 * P) / (bars.length - 1);
+  const y = v => H - P - (v - lo) / rng * (H - 2 * P);
+  const line = bars.map((b, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(b.c).toFixed(1)}`).join("");
+  const lvl = (v, col, dash) =>
+    `<line x1="${P}" x2="${W-P}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"
+       stroke="${col}" stroke-width="1" stroke-dasharray="${dash}" opacity=".85"/>`;
+  $("#dchart").setAttribute("viewBox", `0 0 ${W} ${H}`);
+  $("#dchart").innerHTML =
+    lvl(d.target, "#6fd3b5", "3 3") + lvl(d.stop, "#e2685f", "3 3") + lvl(d.entry, "#7e8da0", "1 3") +
+    `<path d="${line}" fill="none" stroke="#e7ecf3" stroke-width="1.3"/>`;
+}
+
+function close() {
+  $("#drawer").classList.remove("open"); $("#drawer").setAttribute("aria-hidden", "true");
+  $("#scrim").classList.remove("open");
+  document.querySelectorAll("#rows tr").forEach(t => t.classList.remove("sel"));
+}
+$("#dclose").onclick = close; $("#scrim").onclick = close;
+addEventListener("keydown", e => e.key === "Escape" && close());
+
+/* ---------- tabs ---------- */
+let VIEW = "screener", FEEDKIND = "";
+
+function show(v) {
+  VIEW = v;
+  document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.v === v));
+  document.querySelectorAll(".view").forEach(s => s.classList.toggle("on", s.id === "v-" + v));
+  if (v === "news") loadFeed();
+  if (v === "analysis") loadAnalysis(0, "#anbody");
+  if (v === "important") loadAnalysis(2, "#impbody");
+  if (v === "builder") initBuilder();
+  if (v === "backtest") initBacktest();
+  if (v === "bots") initBots();
+}
+document.querySelectorAll("#tabs button").forEach(b => b.onclick = () => show(b.dataset.v));
+document.querySelectorAll("#feedkind button").forEach(b => b.onclick = () => {
+  FEEDKIND = b.dataset.k;
+  document.querySelectorAll("#feedkind button").forEach(x => x.classList.toggle("on", x === b));
+  loadFeed();
+});
+
+async function loadFeed() {
+  const q = FEEDKIND ? `?kind=${FEEDKIND}` : "";
+  const d = await (await fetch("/api/feed" + q)).json();
+  const items = d.items || [];
+  $("#n-news").textContent = items.length;
+  $("#feedmeta").textContent = items.length ? `${items.length} items, newest first` : "";
+  $("#feedbody").innerHTML = items.length ? items.map(i => `
+    <div class="feedrow">
+      <span class="fs">${i.symbol}</span>
+      <span>${i.url ? `<a href="${i.url}" target="_blank" rel="noopener">${esc(i.headline)}</a>`
+                    : esc(i.headline)}
+        <span class="meta2"><span class="kind k-${i.kind}">${i.kind}</span>
+          ${(i.published || "").slice(0,16).replace("T"," ")} · ${esc(i.source)}</span></span>
+    </div>`).join("")
+    : `<div class="empty"><h3>No items yet</h3>
+       <p>News and social posts are collected during a scan, for setups that passed the gates.</p></div>`;
+}
+
+async function loadAnalysis(minSev, target) {
+  const d = await (await fetch(`/api/analysis?min_severity=${minSev}`)).json();
+  const items = d.items || [];
+  if (minSev === 0) $("#n-analysis").textContent = items.length;
+  else $("#n-important").textContent = items.length;
+  $(target).innerHTML = items.length ? items.map(a => `
+    <div class="card sev${a.severity}">
+      <div class="top">
+        <h5>${a.symbol}</h5>
+        <span class="badge b-${a.verdict === "error" ? "off" : a.verdict}">${a.verdict}</span>
+        <span class="conf" style="font-family:var(--mono);font-size:11px;color:var(--dim)">
+          ${(a.confidence * 100).toFixed(0)}% · ${d.labels[a.severity]}${a.catalyst && a.catalyst !== "none" ? " · " + a.catalyst : ""}</span>
+        <span class="when">${(a.ts || "").slice(0,16).replace("T"," ")}</span>
+      </div>
+      ${a.reasons.length ? `<ul class="why">${a.reasons.map(r => `<li>${esc(r)}</li>`).join("")}</ul>`
+                         : `<p class="why" style="padding:0;list-style:none">Nothing decision-relevant in the text.</p>`}
+      ${a.bear_case ? `<div class="bear"><b>Case against</b>${esc(a.bear_case)}</div>` : ""}
+      ${a.technical_note ? `<p class="soc">${esc(a.technical_note)}</p>` : ""}
+      ${a.social_note ? `<p class="soc">${esc(a.social_note)}</p>` : ""}
+      <div class="srcs">${a.sources.news || 0} headlines · ${a.sources.social || 0} posts
+        · ${a.sources.tape_flags || 0} tape flags
+        · ${a.model || ""} / ${a.mode || ""}</div>
+    </div>`).join("")
+    : `<div class="empty"><h3>${minSev >= 2 ? "Nothing important" : "No analysis yet"}</h3>
+       <p>${minSev >= 2 ? "Nothing the review flagged as important. That is the normal state."
+                        : "Enable the review layer in config.yaml and run a scan."}</p></div>`;
+}
+
+const esc = t => String(t).replace(/[<>&]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;"}[c]));
+
+/* ---------- builder ---------- */
+let VOCAB = null, GATES = [];
+
+async function initBuilder() {
+  if (!VOCAB) VOCAB = await (await fetch("/api/builder/vocabulary")).json();
+  if (!GATES.length) GATES = [{feature: "frac_above_ma", op: ">=", value: 0.6, args: {}}];
+  paintGates(); paintLevels(); loadRecipes();
+}
+
+const featOf = k => VOCAB.features.find(f => f.key === k) || VOCAB.features[0];
+
+function paintGates() {
+  $("#gates").innerHTML = GATES.map((g, i) => {
+    const f = featOf(g.feature);
+    const args = Object.entries({...f.args, ...(g.args || {})});
+    return `<div class="grow">
+      <select data-i="${i}" data-k="feature">
+        ${VOCAB.features.map(x => `<option value="${x.key}" ${x.key === g.feature ? "selected" : ""}>${x.label}</option>`).join("")}
+      </select>
+      <select data-i="${i}" data-k="op">
+        ${VOCAB.ops.map(o => `<option value="${o.key}" ${o.key === g.op ? "selected" : ""}>${o.label}</option>`).join("")}
+      </select>
+      <input type="text" data-i="${i}" data-k="value"
+        value="${Array.isArray(g.value) ? g.value.join(",") : g.value}"
+        title="${f.unit || ""}">
+      <button class="xbtn" data-i="${i}" data-k="del" aria-label="Remove gate">×</button>
+    </div>
+    ${args.length ? `<div class="grow args"><div class="argline">${args.map(([k, v]) =>
+      `<label>${k}<input type="number" data-i="${i}" data-k="arg:${k}" value="${(g.args || {})[k] ?? v}"></label>`).join("")}
+      <span>${f.unit ? "unit: " + f.unit : ""}</span></div></div>` : ""}`;
+  }).join("");
+
+  $("#gates").querySelectorAll("[data-k]").forEach(el => {
+    const i = +el.dataset.i, k = el.dataset.k;
+    if (k === "del") { el.onclick = () => { GATES.splice(i, 1); paintGates(); }; return; }
+    el.onchange = () => {
+      if (k === "feature") { GATES[i].feature = el.value; GATES[i].args = {}; }
+      else if (k === "op") GATES[i].op = el.value;
+      else if (k === "value") GATES[i].value = el.value.includes(",")
+        ? el.value.split(",").map(Number) : Number(el.value);
+      else GATES[i].args = {...(GATES[i].args || {}), [k.slice(4)]: Number(el.value)};
+      paintGates();
+    };
+  });
+}
+$("#addgate").onclick = () => { GATES.push({feature: "rsi", op: "<=", value: 30, args: {}}); paintGates(); };
+
+function levelSel(kinds, id) {
+  return `<select id="${id}">${kinds.map(k =>
+    `<option value="${k.key}">${k.label}</option>`).join("")}</select>
+    <div class="argline" id="${id}args" style="margin-top:5px"></div>`;
+}
+function paintLevels() {
+  $("#stopwrap").innerHTML = levelSel(VOCAB.stops, "stopsel");
+  $("#targetwrap").innerHTML = levelSel(VOCAB.targets, "targetsel");
+  const wire = (sel, kinds) => {
+    const draw = () => {
+      const k = kinds.find(x => x.key === $(sel).value);
+      $(sel + "args").innerHTML = Object.entries(k.args).map(([a, v]) =>
+        `<label>${a}<input type="number" step="0.05" data-a="${a}" value="${v}"></label>`).join("");
+    };
+    $(sel).onchange = draw; draw();
+  };
+  wire("#stopsel", VOCAB.stops); wire("#targetsel", VOCAB.targets);
+}
+
+function levelSpec(sel) {
+  const out = {kind: $(sel).value};
+  $(sel + "args").querySelectorAll("input").forEach(i => out[i.dataset.a] = Number(i.value));
+  return out;
+}
+
+function spec() {
+  const key = ($("#bkey").value || "").trim() ||
+    ($("#blabel").value || "untitled").toLowerCase().replace(/[^a-z0-9]+/g, "_");
+  return {key, label: $("#blabel").value || key, needs_regime: $("#regimesel").value || null,
+          gates: GATES, stop: levelSpec("#stopsel"), target: levelSpec("#targetsel"),
+          min_rr: Number($("#minrr").value) || 0};
+}
+
+$("#btest").onclick = async () => {
+  const b = $("#btest"); b.disabled = true; b.textContent = "TESTING…";
+  const res = await fetch("/api/builder/preview", {method: "POST",
+    headers: {"Content-Type": "application/json"}, body: JSON.stringify(spec())});
+  const j = await res.json();
+  b.disabled = false; b.textContent = "TEST ON CACHED BARS";
+  if (!res.ok) { $("#bresult").innerHTML = `<div class="warn2">${esc(j.detail)}</div>`; return; }
+  const worst = j.rejected_by[0] ? j.rejected_by[0][1] : 1;
+  $("#bresult").innerHTML = `
+    <div class="stat"><span>Passing now</span><b>${j.passes} of ${j.evaluated} (${j.hit_rate}%)</b></div>
+    <div class="stat"><span>Fires historically</span><b>${j.history.per_symbol_per_year}/symbol/year</b></div>
+    <div class="stat" style="border:none"><span>Bars walked</span><b>${j.history.bars_walked}</b></div>
+    <h4 style="margin:14px 0 8px">Rejected by</h4>
+    ${j.rejected_by.length ? j.rejected_by.map(([n, c]) => `
+      <div class="rej">${esc(n)} — ${c}
+        <div class="bar2"><i style="width:${(100 * c / worst).toFixed(0)}%"></i></div></div>`).join("")
+      : `<p class="rej">No gate rejected anything.</p>`}
+    ${j.warnings.length ? `<h4 style="margin:14px 0 8px">Watch out</h4>
+      ${j.warnings.map(w => `<div class="warn2">${esc(w)}</div>`).join("")}` : ""}
+    ${j.sample.length ? `<h4 style="margin:14px 0 8px">Sample</h4>
+      ${j.sample.map(s => `<div class="stat"><span>${s.symbol}</span>
+        <b>${s.entry} · ${s.rr}R · ${s.stop_pct}%</b></div>`).join("")}` : ""}`;
+};
+
+$("#bsave").onclick = async () => {
+  const b = $("#bsave"); b.disabled = true;
+  const res = await fetch("/api/builder/save", {method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({spec: spec(), enabled: true})});
+  const j = await res.json();
+  b.textContent = res.ok ? "SAVED" : (j.detail || "FAILED").slice(0, 40);
+  if (res.ok) { loadRecipes(); refresh(); }
+  setTimeout(() => { b.disabled = false; b.textContent = "SAVE & ENABLE"; }, 2500);
+};
+
+async function loadRecipes() {
+  const j = await (await fetch("/api/builder/recipes")).json();
+  $("#bsaved").innerHTML = (j.recipes || []).length ? j.recipes.map(r => `
+    <div class="saved">
+      <button data-k="${r.key}" data-act="toggle" class="badge b-${r.enabled ? "clear" : "off"}"
+        title="Click to ${r.enabled ? "disable" : "enable"}">${r.enabled ? "on" : "off"}</button>
+      ${esc(r.label)}<span class="k">${r.spec.gates.length} gates</span>
+      <button class="xbtn" data-k="${r.key}" data-act="del" aria-label="Delete">×</button>
+    </div>`).join("")
+    : `<p class="rej">Nothing saved yet.</p>`;
+  $("#bsaved").querySelectorAll("[data-act]").forEach(el => el.onclick = async () => {
+    const k = el.dataset.k;
+    if (el.dataset.act === "del") await fetch(`/api/builder/recipes/${k}`, {method: "DELETE"});
+    else await fetch(`/api/builder/enable/${k}`, {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({enabled: el.textContent.trim() === "off"})});
+    loadRecipes(); refresh();
+  });
+}
+
+/* ---------- backtest ----------
+   The screener answers "is there a setup". This answers "did that kind of
+   setup pay", which is the question the rest of the app cannot ask. Two
+   result columns on purpose: every signal at one unit of risk, and the
+   portfolio you could actually have held with N slots. They disagree, and
+   the gap between them is the useful part. */
+let BTMETA = null, BTSHOWN = null;
+
+async function initBacktest() {
+  // A 404 here means the page came off disk but the server process predates
+  // it — restart the service. Say so, rather than leaving an empty dropdown
+  // and no explanation.
+  let res;
+  try {
+    res = await fetch("/api/backtest/meta");
+  } catch (e) {
+    return btDead("The server is not answering.", String(e));
+  }
+  if (!res.ok) {
+    return btDead(res.status === 404
+      ? "This server has no backtest routes."
+      : `The server answered ${res.status}.`,
+      res.status === 404
+        ? "The page you are looking at is newer than the running process — "
+        + "static files are read from disk on every request, Python is not. "
+        + "Restart the screener service and reload."
+        : (await res.text()).slice(0, 300));
+  }
+  BTMETA = await res.json();
+  const sel = $("#btstrat"), keep = sel.value;
+  if (!(BTMETA.strategies || []).length)
+    return btDead("No strategies to test.",
+      "Neither a coded strategy nor a saved recipe was found.");
+  sel.innerHTML = BTMETA.strategies.map(s =>
+    `<option value="${s.key}">${esc(s.label)}${s.built ? " (built)" : ""}</option>`).join("");
+  // Default to whatever was last run, so the config panel and the result on
+  // screen describe the same strategy.
+  const last = (BTMETA.runs || [])[0];
+  sel.value = keep || (last && last.strategy) || sel.value;
+  paintCov();
+  paintRuns();
+  btBusy();
+  if (!BTSHOWN && last) loadRun(last.id);
+}
+
+function btDead(headline, detail) {
+  $("#btcov").innerHTML = `<span style="color:var(--stop)">${esc(headline)}</span>`;
+  $("#btstrat").innerHTML = `<option value="">unavailable</option>`;
+  $("#btrun").disabled = true;
+  $("#bfrun").disabled = true;
+  $("#btresult").innerHTML = `<div class="empty">
+    <h3>${esc(headline)}</h3><p>${esc(detail)}</p></div>`;
+}
+
+function paintCov() {
+  const c = BTMETA.coverage || {};
+  const need = (BTMETA.strategies.find(s => s.key === $("#btstrat").value) || {}).min_bars || 0;
+  // Bars past the warmup are the only ones a walk can test. 280 cached bars
+  // against a 265-bar strategy is fifteen tradable days, which is why this
+  // says so in red rather than letting you run it and wonder.
+  const usable = Math.max(0, (c.avg_per_symbol || 0) - need);
+  const col = usable < 150 ? "var(--stop)" : usable < 500 ? "var(--mark)" : "var(--live)";
+  const note = usable < 150 ? " — about " + Math.round(usable / 21) +
+                 " tradable months. Deepen the history before trusting anything."
+             : usable < 500 ? " — roughly " + (usable / 252).toFixed(1) +
+                 " years each. Thin, but testable."
+             : " — about " + (usable / 252).toFixed(1) + " years each.";
+  $("#btcov").innerHTML =
+    `<b>${(c.symbols || 0).toLocaleString()}</b> symbols · <b>${(c.bars || 0).toLocaleString()}</b> bars
+     · <b>${c.avg_per_symbol || 0}</b> per symbol<br>${c.first || "—"} → ${c.last || "—"}<br>
+     <span style="color:${col}">${usable} bars past the ${need}-bar warmup${note}</span>`;
+}
+
+function btConfig() {
+  return {
+    strategy: $("#btstrat").value,
+    symbols: Number($("#btsymbols").value) || 0,
+    history: Number($("#bthistory").value) || 0,
+    hold_max: Number($("#bthold").value) || 40,
+    cost_bps: Number($("#btcost").value) || 0,
+    risk_pct: Number($("#btrisk").value) || 1,
+    max_open: Number($("#btmaxopen").value) || 8,
+    equity: Number($("#btequity").value) || 10000,
+    use_regime: $("#btregime").checked,
+  };
+}
+$("#btstrat").onchange = () => { if (BTMETA) paintCov(); };
+
+function btBusy() {
+  const bt = (BTMETA && BTMETA.state) || {}, bf = (BTMETA && BTMETA.backfill) || {};
+  $("#btrun").disabled = !!bt.running;
+  $("#btrun").textContent = bt.running
+    ? `WALKING ${bt.done}/${bt.total || "…"}` : "RUN BACKTEST";
+  $("#bfrun").disabled = !!bf.running;
+  $("#bfrun").textContent = bf.running
+    ? `FETCHING ${bf.done}/${bf.total || "…"}` : "DEEPEN HISTORY";
+}
+
+$("#btrun").onclick = async () => {
+  const res = await fetch("/api/backtest/run", {method: "POST",
+    headers: {"Content-Type": "application/json"}, body: JSON.stringify(btConfig())});
+  const j = await res.json();
+  if (!res.ok) { $("#btresult").innerHTML = `<div class="warn2">${esc(j.detail)}</div>`; return; }
+  BTMETA.state = {running: true, done: 0, total: 0};
+  btBusy();
+  $("#btresult").innerHTML = `<div class="empty"><h3>Walking the bars</h3>
+    <p>Every bar of every sampled symbol, re-running the gates as of that day.
+       Progress is on the bar at the top.</p></div>`;
+};
+
+$("#bfrun").onclick = async () => {
+  const res = await fetch("/api/backfill", {method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({bars: Number($("#bfbars").value) || 1000,
+                          only_short: $("#bfshort").checked})});
+  const j = await res.json();
+  if (!res.ok) { $("#btcov").innerHTML = `<span style="color:var(--stop)">${esc(j.detail)}</span>`; return; }
+  BTMETA.backfill = {running: true, done: 0, total: 0};
+  btBusy();
+};
+
+function paintRuns() {
+  const runs = BTMETA.runs || [];
+  $("#btruns").innerHTML = runs.length ? runs.map(r => `
+    <div class="runrow">
+      <button class="go" data-id="${r.id}">${esc(r.strategy)}
+        <span class="k">${(r.ts || "").slice(5,16).replace("T"," ")}</span></button>
+      <span class="k ${r.avg_r > 0 ? "good" : r.avg_r < 0 ? "bad" : ""}">
+        ${r.trades} tr · ${r.avg_r == null ? "—" : r.avg_r.toFixed(2)}R</span>
+      <button class="xbtn" data-del="${r.id}" aria-label="Delete">×</button>
+    </div>`).join("")
+    : `<p class="rej">No runs yet.</p>`;
+  $("#btruns").querySelectorAll("[data-id]").forEach(b =>
+    b.onclick = () => loadRun(Number(b.dataset.id)));
+  $("#btruns").querySelectorAll("[data-del]").forEach(b => b.onclick = async () => {
+    await fetch(`/api/backtest/${b.dataset.del}`, {method: "DELETE"});
+    if (BTSHOWN === Number(b.dataset.del)) { BTSHOWN = null; }
+    initBacktest();
+  });
+}
+
+async function loadRun(id) {
+  const res = await fetch(`/api/backtest/result/${id}`);
+  if (!res.ok) return;
+  BTSHOWN = id;
+  paintBacktest(await res.json());
+}
+
+const sgn = (v, d = 2) => v == null ? "—" : (v > 0 ? "+" : "") + Number(v).toFixed(d);
+const cls = v => v == null ? "" : v > 0 ? "good" : v < 0 ? "bad" : "";
+
+function paintBacktest(r) {
+  const s = r.signal_stats || {}, ps = r.portfolio_stats || {}, p = r.portfolio || {};
+  const c = r.coverage || {}, sp = r.span || {}, b = r.benchmark || {};
+  const cfg = r.config || {};
+  const beat = p.return_pct != null && b.return_pct != null ? p.return_pct - b.return_pct : null;
+
+  $("#btresult").innerHTML = `
+    <div class="hero">
+      <div><div class="l">Trades</div><div class="v">${s.trades || 0}</div>
+        <div class="s">${c.signals || 0} signals fired</div></div>
+      <div><div class="l">Avg R</div><div class="v ${cls(s.avg_r)}">${sgn(s.avg_r)}</div>
+        <div class="s">${s.win_rate == null ? "—" : s.win_rate + "% won"}</div></div>
+      <div><div class="l">Profit factor</div>
+        <div class="v ${s.profit_factor > 1 ? "good" : s.profit_factor != null ? "bad" : ""}">
+          ${s.profit_factor == null ? "—" : s.profit_factor.toFixed(2)}</div>
+        <div class="s">t-stat ${s.t_stat == null ? "n/a" : s.t_stat}</div></div>
+      <div><div class="l">Portfolio</div>
+        <div class="v ${cls(p.return_pct)}">${sgn(p.return_pct, 1)}%</div>
+        <div class="s">index ${sgn(b.return_pct, 1)}%${beat == null ? ""
+          : ` · ${beat > 0 ? "beat" : "lost"} by ${Math.abs(beat).toFixed(1)}`}</div></div>
+    </div>
+
+    ${(r.warnings || []).length ? `<div class="bpanel" style="margin-bottom:12px">
+      <h4>Read this before the numbers</h4>
+      ${r.warnings.map(w => `<div class="warn2">${esc(w)}</div>`).join("")}</div>` : ""}
+
+    <div class="bpanel" style="margin-bottom:12px">
+      <h4>Equity — ${esc(r.strategy.label)}, ${cfg.risk_pct}% risk, ${cfg.max_open} slots</h4>
+      ${(p.curve || []).length > 2 ? `<svg class="eq" id="eqchart"></svg>`
+        : `<p class="rej">Not enough closed trades to draw a curve.</p>`}
+      <div class="stat"><span>Start → end</span>
+        <b>${fmt(p.equity_start, 0)} → ${fmt(p.equity_end, 0)}</b></div>
+      <div class="stat"><span>Max drawdown</span><b class="bad">${p.max_dd_pct}%</b></div>
+      <div class="stat" style="border:none"><span>Index drawdown, same window</span>
+        <b>${b.max_dd_pct == null ? "—" : b.max_dd_pct + "%"}</b></div>
+    </div>
+
+    <div class="bt2" style="margin-bottom:12px">
+      <div class="bpanel">
+        <h4>Every signal · 1 unit of risk</h4>
+        ${statBlock(s)}
+      </div>
+      <div class="bpanel">
+        <h4>Portfolio · ${cfg.max_open} slots, one per symbol</h4>
+        ${statBlock(ps)}
+        <div class="stat"><span>Turned away, no slot</span><b>${p.skipped_cap || 0}</b></div>
+        <div class="stat" style="border:none"><span>Turned away, already held</span>
+          <b>${p.skipped_dupe || 0}</b></div>
+      </div>
+    </div>
+
+    <div class="bt2" style="margin-bottom:12px">
+      <div class="bpanel">
+        <h4>How trades ended</h4>
+        ${exitBars(s.exits || {}, s.trades || 0)}
+        ${(c.rejected_by || []).length ? `<h4 style="margin:16px 0 8px">Which gate said no</h4>
+          <p class="thin" style="margin:-4px 0 8px">Over ${(c.evaluated || 0).toLocaleString()}
+             evaluated bars. A gate near 100% is the whole strategy; a gate near 0%
+             is decoration.</p>
+          ${c.rejected_by.map(g => `
+            <div class="rbar"><span title="${esc(g.gate)}">${esc(g.gate.slice(0,15))}</span>
+              <i style="width:${g.pct.toFixed(1)}%"></i><b>${g.pct}%</b></div>`).join("")}` : ""}
+        ${(c.skipped || []).length ? `<h4 style="margin:16px 0 8px">Signals not taken</h4>
+          ${c.skipped.map(([why, n]) =>
+            `<div class="stat"><span>${esc(why)}</span><b>${n}</b></div>`).join("")}` : ""}
+      </div>
+      <div class="bpanel">
+        <h4>Scope</h4>
+        <div class="stat"><span>Window</span><b>${sp.from || "—"} → ${sp.to || "—"}</b></div>
+        <div class="stat"><span>Median symbol covers</span><b>${sp.years || 0} years</b></div>
+        <div class="stat"><span>Symbols tested</span>
+          <b>${c.symbols_tested} of ${c.symbols_cached}</b></div>
+        <div class="stat"><span>Bars walked</span><b>${(c.bars_walked || 0).toLocaleString()}</b></div>
+        <div class="stat"><span>Signals / symbol / year</span>
+          <b>${c.signals_per_symbol_per_year}</b></div>
+        <div class="stat"><span>Regime filter</span>
+          <b>${cfg.use_regime ? (r.strategy.needs_regime || "n/a") : "off"}</b></div>
+        <div class="stat" style="border:none"><span>Cost per side</span><b>${cfg.cost_bps} bps</b></div>
+      </div>
+    </div>
+
+    <div class="wrap">
+      <table>
+        <thead><tr>
+          <th class="l" style="width:96px">Symbol</th>
+          <th class="l" style="width:100px">Entered</th>
+          <th class="l" style="width:100px">Exited</th>
+          <th>Entry</th><th>Stop</th><th>Exit</th>
+          <th style="width:56px">Bars</th>
+          <th class="l" style="width:74px">Ended</th>
+          <th style="width:64px">R</th><th style="width:74px">P&amp;L</th>
+        </tr></thead>
+        <tbody>${(r.trades || []).map(t => `
+          <tr>
+            <td class="l sym">${t.symbol}</td>
+            <td class="l mut">${t.entry_date}</td>
+            <td class="l mut">${t.exit_date}</td>
+            <td>${fmt(t.entry)}</td><td class="mut">${fmt(t.stop)}</td><td>${fmt(t.exit)}</td>
+            <td class="mut">${t.bars}</td>
+            <td class="l ${t.reason === "stop" ? "bad" : t.reason === "target" ? "good" : "mut"}">
+              ${t.reason}</td>
+            <td class="${cls(t.r)}">${sgn(t.r)}</td>
+            <td class="${cls(t.pnl)}">${sgn(t.pnl, 0)}</td>
+          </tr>`).join("")}</tbody>
+      </table>
+      ${(r.trades || []).length ? "" : `<div class="empty"><h3>No trades</h3>
+        <p>The gates never produced a fillable entry on this history.</p></div>`}
+    </div>
+    <p class="thin" style="margin-top:10px">Filled at the next bar's open, never the
+      signal close. A bar that touches both the stop and the target counts as a stop.
+      Showing ${(r.trades || []).length} of the ${(ps.trades || 0) + (ps.still_open || 0)}
+      trades the portfolio took${ps.still_open
+        ? `, ${ps.still_open} of which had not resolved when the data ran out — those are
+           marked "open", counted in the equity curve at the last close and left out of
+           every statistic above`
+        : ""}. Walk took ${r.seconds}s.</p>`;
+
+  if ((p.curve || []).length > 2) drawEquity(p.curve, cfg.equity);
+}
+
+function statBlock(s) {
+  if (!s || !s.trades) return `<p class="rej">No closed trades.</p>`;
+  return `
+    <div class="stat"><span>Closed trades</span><b>${s.trades}</b></div>
+    <div class="stat"><span>Win rate</span><b>${s.win_rate}%</b></div>
+    <div class="stat"><span>Average R</span><b class="${cls(s.avg_r)}">${sgn(s.avg_r)}</b></div>
+    <div class="stat"><span>Median R</span><b class="${cls(s.median_r)}">${sgn(s.median_r)}</b></div>
+    <div class="stat"><span>Average win / loss</span>
+      <b><span class="good">${sgn(s.avg_win_r)}</span> / <span class="bad">${sgn(s.avg_loss_r)}</span></b></div>
+    <div class="stat"><span>Best / worst</span>
+      <b>${sgn(s.best_r)} / ${sgn(s.worst_r)}</b></div>
+    <div class="stat"><span>Total R</span><b class="${cls(s.total_r)}">${sgn(s.total_r)}</b></div>
+    <div class="stat"><span>Std dev of R</span><b>${s.stdev_r}</b></div>
+    <div class="stat"${s.still_open ? "" : ' style="border:none"'}>
+      <span>Average hold</span><b>${s.avg_bars} bars</b></div>
+    ${s.still_open ? `<div class="stat" style="border:none"><span>Still open at the end</span>
+      <b>${s.still_open}</b></div>` : ""}`;
+}
+
+function exitBars(exits, total) {
+  const order = ["target", "stop", "time", "open"];
+  const keys = order.filter(k => exits[k]).concat(
+    Object.keys(exits).filter(k => !order.includes(k)));
+  if (!keys.length) return `<p class="rej">Nothing closed.</p>`;
+  return keys.map(k => `
+    <div class="rbar ${k}"><span>${k}</span>
+      <i style="width:${(100 * exits[k] / Math.max(1, total)).toFixed(1)}%"></i>
+      <b>${exits[k]}</b></div>`).join("");
+}
+
+function drawEquity(curve, start) {
+  const svg = $("#eqchart");
+  if (!svg) return;
+  const W = svg.clientWidth || 600, H = 170, pad = 8;
+  const vals = curve.map(p => p.equity);
+  const lo = Math.min(start, ...vals), hi = Math.max(start, ...vals);
+  const span = (hi - lo) || 1;
+  const x = i => pad + i * (W - 2 * pad) / Math.max(1, curve.length - 1);
+  const y = v => H - pad - (v - lo) * (H - 2 * pad) / span;
+  const pts = curve.map((p, i) => `${x(i).toFixed(1)},${y(p.equity).toFixed(1)}`).join(" ");
+  const up = vals[vals.length - 1] >= start;
+  const col = up ? "var(--live)" : "var(--stop)";
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.innerHTML = `
+    <line x1="${pad}" x2="${W - pad}" y1="${y(start).toFixed(1)}" y2="${y(start).toFixed(1)}"
+      stroke="var(--rule)" stroke-dasharray="3 3"/>
+    <polyline points="${pts}" fill="none" stroke="${col}" stroke-width="1.6"
+      stroke-linejoin="round"/>
+    <text x="${pad}" y="${(y(start) - 5).toFixed(1)}" fill="var(--dim)"
+      font-family="IBM Plex Mono, monospace" font-size="9">start ${Math.round(start)}</text>`;
+}
+
+/* ---------- bots ---------- */
+let BOTMETA = null, EXITROWS = [{kind: "break_even", value: 1.0}];
+
+async function initBots() {
+  BOTMETA = await (await fetch("/api/bots")).json();
+  $("#botsrc").innerHTML = BOTMETA.strategies.map(s => `<option value="${s}">${s}</option>`).join("");
+  paintKill(); paintExits(); paintCaps(); paintBots();
+  loadBotEvents();
+}
+
+function paintKill() {
+  const on = BOTMETA.kill_switch;
+  $("#killbox").innerHTML = `
+    <div class="warnbox">
+      <b>Paper only.</b> Bots simulate fills against live quotes and send nothing to your
+      broker. ${BOTMETA.allow_live
+        ? "Live is unlocked in config, but each bot still has to be armed individually."
+        : "Live trading is off in config.yaml."}
+      Nothing here says whether the rules make money — that needs a backtest.
+      <div style="margin-top:10px">
+        <button class="kill ${on ? "on" : ""}" id="killbtn">
+          ${on ? "KILL SWITCH ON — NO NEW ENTRIES" : "KILL SWITCH"}</button>
+      </div>
+    </div>`;
+  $("#killbtn").onclick = async () => {
+    const j = await (await fetch("/api/kill", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({on: !BOTMETA.kill_switch})})).json();
+    BOTMETA.kill_switch = j.kill_switch; paintKill();
+  };
+}
+
+function paintExits() {
+  $("#exitrows").innerHTML = EXITROWS.map((r, i) => `
+    <div class="exitrow">
+      <select data-i="${i}" data-k="kind">
+        ${Object.entries(BOTMETA.exits).map(([k, lbl]) =>
+          `<option value="${k}" ${k === r.kind ? "selected" : ""}>${lbl}</option>`).join("")}
+      </select>
+      <input type="number" step="0.1" min="0.1" data-i="${i}" data-k="value" value="${r.value}">
+      <button class="xbtn" data-i="${i}" data-k="del">×</button>
+    </div>`).join("");
+  $("#exitrows").querySelectorAll("[data-k]").forEach(el => {
+    const i = +el.dataset.i, k = el.dataset.k;
+    if (k === "del") { el.onclick = () => { EXITROWS.splice(i, 1); paintExits(); }; return; }
+    el.onchange = () => { EXITROWS[i][k] = k === "value" ? Number(el.value) : el.value; paintExits(); };
+  });
+}
+$("#addexit").onclick = () => { EXITROWS.push({kind: "trail_atr", value: 2.0}); paintExits(); };
+
+function paintCaps() {
+  $("#caprows").innerHTML = Object.entries(BOTMETA.caps).map(([k, v]) => `
+    <div class="brow"><span>${k.replace(/_/g, " ")}</span>
+      <input type="${typeof v === "string" ? "text" : "number"}" data-c="${k}" value="${v}"></div>`).join("");
+}
+
+function botSpec() {
+  const caps = {};
+  $("#caprows").querySelectorAll("[data-c]").forEach(i =>
+    caps[i.dataset.c] = i.type === "number" ? Number(i.value) : i.value);
+  const key = ($("#botkey").value || "").trim() ||
+    ($("#botlabel").value || "bot").toLowerCase().replace(/[^a-z0-9]+/g, "_");
+  return {key, label: $("#botlabel").value || key, entry_strategy: $("#botsrc").value,
+          mode: "paper", risk_per_trade_pct: Number($("#botrisk").value) || 1.0,
+          exits: EXITROWS, caps};
+}
+
+$("#botsave").onclick = async () => {
+  const b = $("#botsave"); b.disabled = true;
+  const res = await fetch("/api/bots/save", {method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({spec: botSpec(), enabled: true})});
+  const j = await res.json();
+  b.textContent = res.ok ? "SAVED" : (j.detail || "FAILED").slice(0, 46);
+  if (res.ok) initBots();
+  setTimeout(() => { b.disabled = false; b.textContent = "SAVE AS PAPER BOT"; }, 2600);
+};
+
+function paintBots() {
+  const bots = BOTMETA.bots || [];
+  $("#botlist").innerHTML = bots.length ? bots.map(b => {
+    const st = b.state || {}, pos = st.positions || [];
+    const pnl = Number(st.realised || 0);
+    return `<div class="botcard ${b.mode === "live" ? "live" : ""}">
+      <div class="top">
+        <h5>${esc(b.label)}</h5>
+        <span class="badge b-${b.mode === "live" ? "avoid" : "off"}">${b.mode}</span>
+        <span class="badge b-${b.enabled ? "clear" : "off"}">${b.enabled ? "on" : "off"}</span>
+        <div class="acts">
+          <button data-k="${b.key}" data-a="toggle">${b.enabled ? "PAUSE" : "START"}</button>
+          <button data-k="${b.key}" data-a="cbot">EXPORT CBOT</button>
+          <button data-k="${b.key}" data-a="del">DELETE</button>
+        </div>
+      </div>
+      <div class="stat"><span>from</span><b>${esc(b.spec.entry_strategy)}</b></div>
+      <div class="stat"><span>open</span><b>${pos.length} / ${b.spec.caps.max_concurrent}</b></div>
+      <div class="stat"><span>today</span>
+        <b class="${pnl > 0 ? "pos" : pnl < 0 ? "neg" : ""}">${pnl.toFixed(2)}</b></div>
+      ${st.halted ? `<div class="warn2" style="margin-top:9px">Halted: ${esc(st.halted)}</div>` : ""}
+      ${pos.map(p => `<div class="stat"><span>${p.symbol}</span>
+        <b>${p.units} @ ${p.entry} · stop ${p.stop}</b></div>`).join("")}
+    </div>`;
+  }).join("") : `<p class="rej">No bots yet.</p>`;
+
+  $("#botlist").querySelectorAll("[data-a]").forEach(el => el.onclick = async () => {
+    const k = el.dataset.k, a = el.dataset.a;
+    if (a === "del") { await fetch(`/api/bots/${k}`, {method: "DELETE"}); return initBots(); }
+    if (a === "toggle") {
+      const cur = BOTMETA.bots.find(x => x.key === k);
+      await fetch(`/api/bots/${k}/enable`, {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({enabled: !cur.enabled})});
+      return initBots();
+    }
+    const res = await fetch(`/api/bots/${k}/cbot`);
+    const j = await res.json();
+    if (!res.ok) { el.textContent = (j.detail || "FAILED").slice(0, 24); return; }
+    const blob = new Blob([j.code], {type: "text/plain"});
+    const a2 = document.createElement("a");
+    a2.href = URL.createObjectURL(blob); a2.download = j.filename; a2.click();
+    URL.revokeObjectURL(a2.href);
+  });
+}
+
+async function loadBotEvents() {
+  const bots = BOTMETA.bots || [];
+  if (!bots.length) { $("#botevents").innerHTML = `<p class="rej">Nothing yet.</p>`; return; }
+  const all = [];
+  for (const b of bots) {
+    const j = await (await fetch(`/api/bots/${b.key}/events?limit=25`)).json();
+    all.push(...(j.events || []));
+  }
+  all.sort((x, y) => (y.ts || "").localeCompare(x.ts || ""));
+  $("#botevents").innerHTML = all.length ? all.slice(0, 40).map(e => `
+    <div class="ev">
+      <span class="t">${(e.ts || "").slice(11, 16)}</span>
+      <span class="e-${e.event}">${e.event}</span>
+      <span>${esc(e.symbol || e.why || "")}</span>
+      <span class="${e.pnl > 0 ? "pos" : e.pnl < 0 ? "neg" : "mut"}">
+        ${e.pnl != null ? e.pnl.toFixed(2) : e.entry != null ? "@" + e.entry : ""}</span>
+    </div>`).join("") : `<p class="rej">Nothing yet.</p>`;
+}
+
+
+/* ---------- assistant dock (available on every tab) ---------- */
+let CHAT = [], CHATBUSY = false;
+
+function paintChat() {
+  $("#msgs").innerHTML = CHAT.length ? CHAT.map(m => `
+    <div class="msg ${m.role === "user" ? "you" : m.error ? "bot err" : "bot"}">${esc(m.content)}
+      ${(m.steps || []).length ? `<div class="tools">${m.steps.map(t =>
+        `<span>${esc(t.tool)}</span>`).join("")}</div>` : ""}
+    </div>`).join("")
+    : `<div class="msg bot">Ask about your setups, strategies or backtests. I can read
+       today's scan, the gates behind each row, saved strategies, backtests and collected
+       headlines, and I can draft and preview a strategy. I can't scan, plot, trade or
+       start a bot.</div>`;
+  $("#msgs").scrollTop = $("#msgs").scrollHeight;
+}
+
+function dockOpen(on) {
+  $("#dock").classList.toggle("open", on);
+  $("#dock").setAttribute("aria-hidden", String(!on));
+  $("#fab").classList.toggle("open", on);
+  $("#fab").innerHTML = on ? "&times;" : "&#9679;";
+  if (on) { paintChat(); $("#chatin").focus(); }
+}
+$("#fab").onclick = () => dockOpen(!$("#dock").classList.contains("open"));
+$("#dockclose").onclick = () => dockOpen(false);
+$("#dockwide").onclick = () => $("#dock").classList.toggle("wide");
+$("#dockclear").onclick = () => { CHAT = []; paintChat(); };
+addEventListener("keydown", e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+    e.preventDefault(); dockOpen(!$("#dock").classList.contains("open"));
+  }
+});
+
+async function sendChat(text) {
+  if (CHATBUSY || !text.trim()) return;
+  CHATBUSY = true;
+  $("#chatsend").disabled = true; $("#thinking").hidden = false;
+  CHAT.push({role: "user", content: text.trim()});
+  paintChat();
+  try {
+    const res = await fetch("/api/chat", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({messages: CHAT.map(m => ({role: m.role, content: m.content}))})});
+    const j = await res.json();
+    CHAT.push(res.ok
+      ? {role: "assistant", content: j.reply, steps: j.steps || []}
+      : {role: "assistant", content: j.detail || "request failed", error: true});
+  } catch (e) {
+    CHAT.push({role: "assistant", content: String(e), error: true});
+  }
+  CHATBUSY = false;
+  $("#chatsend").disabled = false; $("#thinking").hidden = true;
+  paintChat();
+}
+
+$("#chatsend").onclick = () => { const t = $("#chatin").value; $("#chatin").value = ""; sendChat(t); };
+$("#chatin").addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    const t = $("#chatin").value; $("#chatin").value = ""; sendChat(t);
+  }
+});
+document.querySelectorAll("#chathints button").forEach(b =>
+  b.onclick = () => sendChat(b.textContent));
+
+/* ---------- state ---------- */
+function paintRegime(r) {
+  const el = $("#regime");
+  if (!r) return;
+  el.className = "regime " + (r.ok ? "on" : "off");
+  $("#rstate").textContent = r.ok ? "LONGS ENABLED" : "LONGS BLOCKED";
+  $("#rnote").textContent = r.ok
+    ? `${r.symbol} ${r.note}.`
+    : `${r.symbol} — ${r.note}. The strategy takes no new longs here.`;
+  $("#rnums").textContent = `${fmt(r.close)}  ·  50d ${fmt(r.sma_fast)}  ·  200d ${fmt(r.sma_slow)}  ·  ${r.asof}`;
+  document.querySelector("main").style.opacity = r.ok ? 1 : .55;
+}
+
+function paintAlert(s) {
+  const box = $("#alert");
+  if (s.error) {
+    box.innerHTML = `<div class="err"><b>Scan stopped.</b><br>${s.error}</div>`;
+  } else if ((s.errors || []).length) {
+    box.innerHTML = `<div class="err">${s.errors.length} symbols failed to load —
+      first: <code>${s.errors[0].symbol}: ${s.errors[0].error}</code></div>`;
+  } else if ((s.blocked_by_earnings || []).length) {
+    const b = s.blocked_by_earnings;
+    box.innerHTML = `<div class="err" style="border-color:rgba(232,185,74,.4);background:rgba(232,185,74,.07)">
+      <b>${b.length} setup${b.length > 1 ? "s" : ""} held back for earnings.</b>
+      ${b.slice(0,4).map(x => `<code>${x.symbol}</code> ${x.why}`).join(" · ")}</div>`;
+  } else box.innerHTML = "";
+}
+
+async function refresh() {
+  const s = await (await fetch("/api/state")).json();
+  paintRegime(s.regime); paintAlert(s);
+  LIVE = s.live || {}; CLOCKS = s.clocks || {}; UNQUOTED = s.unquoted || [];
+  STRATS = s.strategies || []; paintStratFilter();
+  if (s.assistant_model) $("#dockmodel").textContent = s.assistant_model;
+  PLOTTED = new Set((s.plotted || []).filter(p => p.ok).map(p => p.symbol));
+  FORMING = Object.fromEntries((s.forming || []).map(r => [r.symbol, r]));
+  document.querySelectorAll("#rate button").forEach(b =>
+    b.classList.toggle("on", Number(b.dataset.q) === CLOCKS.quote_interval));
+  const a = s.account || {};
+  $("#acct").innerHTML = a.equity != null
+    ? `equity <b>${fmt(a.equity)} ${a.currency || ""}</b> · risk <b>${(s.risk_pct*100).toFixed(1)}%</b> per trade`
+    : `<b>no account data</b> — sizing off fallback equity`;
+  $("#run").disabled = s.scanning;
+  $("#run").textContent = s.scanning ? "Scanning…" : "Run scan";
+  if (!s.scanning && s.scan) {
+    const st = s.stages || {};
+    const tail = st.llm && st.llm !== "disabled" ? ` · reviewed by ${st.llm}` : "";
+    $("#status").textContent =
+      `${s.scan.hits} setups from ${s.scan.scanned} symbols · ${s.scan.finished.slice(0,16).replace("T"," ")}${tail}`;
+  }
+  const r = await (await fetch("/api/results")).json();
+  ROWS = r.rows || []; render();
+  $("#n-screener").textContent = ROWS.length;
+  const flagged = ROWS.filter(x => ((x.llm || {}).severity ?? 0) >= 2).length;
+  if (flagged) $("#n-important").textContent = flagged;
+  if (VIEW === "news") loadFeed();
+  if (VIEW === "analysis") loadAnalysis(0, "#anbody");
+  if (VIEW === "important") loadAnalysis(2, "#impbody");
+}
+
+$("#plotall").onclick = async () => {
+  const b = $("#plotall"); b.disabled = true; b.textContent = "DRAWING…";
+  try {
+    const res = await fetch("/api/plot", {method: "POST",
+      headers: {"Content-Type": "application/json"}, body: "{}"});
+    const j = await res.json();
+    const ok = (j.results || []).filter(r => r.ok).length;
+    b.textContent = res.ok ? `PLOTTED ${ok}` : (j.detail || "FAILED").slice(0, 40);
+  } catch { b.textContent = "FAILED"; }
+  setTimeout(() => { b.disabled = false; b.textContent = "PLOT TOP 5"; }, 3500);
+};
+
+$("#run").onclick = async () => {
+  $("#run").disabled = true; $("#alert").innerHTML = "";
+  await fetch("/api/scan", {method: "POST"});
+};
+
+const es = new EventSource("/api/events");
+es.onmessage = e => {
+  const v = JSON.parse(e.data);
+  if (v.phase === "connecting") $("#status").textContent = "connecting to cTrader…";
+  if (v.phase === "regime") $("#status").textContent = `checking ${v.symbol}…`;
+  if (v.phase === "catalysts") $("#status").textContent = `earnings + news for ${v.count} survivors…`;
+  if (v.phase === "social") $("#status").textContent = `chatter for ${v.count} survivors…`;
+  if (v.phase === "plot") $("#status").textContent = `drawing ${v.count} charts in cTrader…`;
+  if (v.phase === "bot" && VIEW === "bots") initBots();
+  if (v.phase === "review") $("#status").textContent = `reviewing ${v.count} setups…`;
+  if (v.phase === "scanning" && v.total) {
+    const p = (v.done || 0) / v.total;
+    $("#prog").style.width = (p * 100).toFixed(1) + "%";
+    $("#status").textContent = `${v.done || 0} / ${v.total} · ${v.symbol || ""}`;
+  }
+  if (v.phase === "quotes") { LIVE = v.live || {}; paintLive(); }
+  if (v.phase === "forming") {
+    FORMING = Object.fromEntries((v.rows || []).map(r => [r.symbol, r]));
+    paintForming();
+    const gone = (v.rows || []).filter(r => !r.pass).length;
+    if (gone) $("#status").textContent =
+      `${gone} of ${v.rows.length} would not pass on the current open bar`;
+  }
+  if (v.phase === "quote_error" || v.phase === "forming_error")
+    $("#tick").textContent = "quotes stalled — " + v.message;
+  if (v.phase === "backtest" || v.phase === "backfill") {
+    const walking = v.phase === "backtest";
+    if (BTMETA) {
+      BTMETA[walking ? "state" : "backfill"] = {running: true, done: v.done, total: v.total};
+      if (VIEW === "backtest") btBusy();
+    }
+    if (v.total) $("#prog").style.width = (100 * (v.done || 0) / v.total).toFixed(1) + "%";
+    $("#status").textContent =
+      `${walking ? "backtest" : "backfill"} ${v.done || 0} / ${v.total || "?"} · ${v.symbol || ""}`;
+  }
+  if (v.phase === "backtest_done" || v.phase === "backtest_error" ||
+      v.phase === "backfill_done" || v.phase === "backfill_error") {
+    $("#prog").style.width = "0";
+    $("#status").textContent = v.message
+      ? v.phase.replace("_", " ") + " — " + v.message
+      : v.phase === "backtest_done" ? `backtest done · ${v.trades} trades`
+      : `backfill done · ${v.rows} bars over ${v.symbols} symbols`;
+    if (v.id) BTSHOWN = null;
+    if (VIEW === "backtest") initBacktest();
+  }
+  if (v.phase === "done" || v.phase === "error") {
+    $("#prog").style.width = "0";
+    refresh();
+  }
+};
+
+refresh();
+setInterval(() => { if (!$("#drawer").classList.contains("open")) refresh(); }, 30000);
+</script>
+</body>
+</html>
