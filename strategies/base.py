@@ -88,6 +88,11 @@ class Strategy:
     direction: str = "long"          # long | short
     needs_regime: str | None = "bull"  # bull | bear | None (regime-agnostic)
     defaults: dict[str, Any] = {}
+    # Gates that describe THE ENTRY BAR rather than the structure leading to it.
+    # A setup failing only these is not a failure - it is a setup that has not
+    # triggered yet. Without this split the screener only ever shows a name on
+    # the single evening its trigger bar prints, and shows nothing the day after.
+    trigger_gates: frozenset[str] = frozenset()
     rank_weights: dict[str, float] = {"rr": 0.4, "trend_frac": 0.3, "turnover": 0.3}
 
     def __init__(self, params: dict | None = None):
@@ -115,6 +120,10 @@ class Strategy:
         rr = reward / risk_ps
         risk_amt = ctx.equity * ctx.risk_per_trade
         failed = [g.name for g in gates if not g.ok]
+        structural = [f for f in failed if f not in self.trigger_gates]
+        # triggered: everything passes. watching: only the trigger is missing.
+        status = ("triggered" if not failed
+                  else "watching" if not structural else "rejected")
         atr = float(d["atr"].iloc[-1]) if "atr" in d else float("nan")
 
         row = {
@@ -125,6 +134,9 @@ class Strategy:
             "asof": d.index[-1].date().isoformat(),
             "provisional": bool(provisional),
             "pass": not failed,
+            "status": status,
+            "watching": status == "watching",
+            "awaiting": [f for f in failed if f in self.trigger_gates],
             "failed": failed,
             "gates": [{"name": g.name, "ok": g.ok, "detail": g.detail} for g in gates],
             "entry": round(float(entry), 4),

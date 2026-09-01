@@ -53,6 +53,21 @@ class Op:
         return self.kind
 
 
+# how many sessions to push each label right, so they do not stack up
+_LABEL_SLOT = {"gex_call_wall": 2, "gex_put_wall": 4, "gex_flip": 6}
+
+
+def _shift(day: str, days: int) -> str:
+    """Move a label anchor along by N days, keeping the ISO shape."""
+    from datetime import datetime, timedelta
+    base = str(day)[:10]
+    try:
+        d = datetime.strptime(base, "%Y-%m-%d") + timedelta(days=days)
+        return d.strftime("%Y-%m-%dT00:00:00Z")
+    except ValueError:
+        return _iso(day)
+
+
 def _iso(day: str) -> str:
     """'2026-08-27' -> ISO 8601 UTC. Times must be full timestamps."""
     return f"{day}T00:00:00Z" if len(day) == 10 else day
@@ -86,12 +101,18 @@ def plan(row: dict, cfg: dict) -> list[Op]:
             ops.append(Op(f"hline_{name}", {
                 "object_type": "horizontal_line", "price1": price, "color": col}))
 
-    # the pullback window, as a filled rectangle
+    # The pullback window as a box around the bars it actually happened in.
+    #
+    # This used to run from the swing low up to the lowest value of the moving
+    # average inside the window, which is a sliver sitting under the candles and
+    # reads as a stray block rather than a highlight. Boxing low-to-high over
+    # the same bars is what the eye expects: it frames the dip.
     if z and cfg.get("draw_zone", True):
+        top = z.get("window_high") or z.get("ma_at_low") or row["entry"]
         ops.append(Op("zone", {
             "object_type": "rectangle",
             "time1": _iso(z["start"]), "price1": z["low"],
-            "time2": _iso(z["end"]), "price2": z.get("ma_at_low", row["entry"]),
+            "time2": _iso(z["end"]), "price2": top,
             "color": colors.get("zone", "#E8B94A"), "fill": True,
         }))
         ops.append(Op("bounce_marker", {
@@ -99,6 +120,29 @@ def plan(row: dict, cfg: dict) -> list[Op]:
             "time1": bounce, "price1": z.get("low", row["entry"]),
             "color": colors.get("bounce", "#6FD3B5"),
         }))
+
+    # gamma levels: walls act as magnets, the flip is where hedging inverts
+    g = row.get("gex") or {}
+    if cfg.get("draw_gex", True) and g.get("ok"):
+        for key, price, col, tag in (
+                ("gex_call_wall", g.get("call_wall"), colors.get("call_wall", "#4FB6A5"),
+                 f"call wall {g.get('call_wall')} ({g.get('call_wall_pct'):+}%)"),
+                ("gex_put_wall", g.get("put_wall"), colors.get("put_wall", "#C46A62"),
+                 f"put wall {g.get('put_wall')} ({g.get('put_wall_pct'):+}%)"),
+                ("gex_flip", g.get("flip"), colors.get("flip", "#9B8CC4"),
+                 f"gamma flip {g.get('flip')}")):
+            if not price:
+                continue
+            ops.append(Op(key, {"object_type": "horizontal_line",
+                                "price1": price, "color": col}))
+            if cfg.get("label_gex", True):
+                # Stagger the anchors. Every label used to hang off the same
+                # timestamp, so three gamma labels plus the setup label piled up
+                # at the left edge and overlapped each other into a smear.
+                ops.append(Op(key + "_label", {
+                    "object_type": "text",
+                    "time1": _shift(z.get("start") or row["asof"], _LABEL_SLOT[key]),
+                    "price1": price, "text": tag, "color": col}))
 
     # one text object carrying everything the screener knows
     if cfg.get("draw_label", True):
@@ -115,11 +159,14 @@ def plan(row: dict, cfg: dict) -> list[Op]:
         if llm.get("verdict") and llm["verdict"] not in ("off", "clear"):
             bits.append(f"{llm['verdict'].upper()}: "
                         f"{'; '.join(llm.get('reasons') or [])[:80]}")
-        # Anchor the label at the LEFT edge of the pullback window, not at the
-        # bounce bar. The bounce is the newest bar, so text placed there runs
-        # off the right edge of the viewport and is unreadable.
+        # Anchor the label well LEFT of the pullback window. Anchoring at the
+        # window start still put it near the right edge - the window is recent
+        # by definition - so the text ran off the viewport and was cut mid-word.
+        # Text renders rightward from its anchor, so it needs room to its right.
         ops.append(Op("label", {
-            "object_type": "text", "time1": _iso(z.get("start") or row["asof"]),
+            "object_type": "text",
+            "time1": _shift(z.get("start") or row["asof"],
+                            -int(cfg.get("label_lead_days", 30))),
             "price1": row["target"],
             "text": " | ".join(bits), "color": colors.get("label", "#E7ECF3"),
         }))
@@ -178,6 +225,12 @@ class Plotter:
     def _key(self, symbol: str, strategy: str | None) -> str:
         return f"plot:{strategy or 'x'}:{symbol}"
 
+    def _geom_key(self, symbol: str, strategy: str | None) -> str:
+        return f"plotgeom:{strategy or 'x'}:{symbol}"
+
+    def _row_key(self, symbol: str, strategy: str | None) -> str:
+        return f"plotrow:{strategy or 'x'}:{symbol}"
+
     def _mine(self, symbol: str, strategy: str | None) -> list[str]:
         if not self.store:
             return []
@@ -208,12 +261,17 @@ class Plotter:
 
         if chart_id and "chart_focus" in self.mcp.resolved:
             await self.mcp.call("chart_focus", chart_id=chart_id)
+            tf_ok, tf_why = True, None
             if "chart_timeframe" in self.mcp.resolved:
                 try:
                     await self.mcp.call("chart_timeframe", period=tf)
-                except RuntimeError:
-                    pass
-            return {"reused": True, "chart_id": chart_id}
+                except RuntimeError as e:
+                    # Swallowing this silently meant daily-derived zone and
+                    # label times were drawn onto a 4h chart, where they land in
+                    # the wrong place. Surface it instead.
+                    tf_ok, tf_why = False, str(e)[:140]
+            return {"reused": True, "chart_id": chart_id,
+                    "timeframe": tf, "timeframe_ok": tf_ok, "timeframe_why": tf_why}
 
         await self.mcp.call("chart_open", symbol=symbol, period=tf)
         return {"reused": False, "chart_id": None}
@@ -270,13 +328,14 @@ class Plotter:
         if self.cfg.get("clear_before_draw", True):
             cleared = await self.clear(sym, strat, focus_first=False)
 
-        ids, done, failed = [], [], []
+        ids, done, failed, drawn_ops = [], [], [], []
         for op in plan(row, self.cfg):
             try:
                 raw = await self.mcp.call("object_add", **op.args)
                 oid = _object_id(raw)
                 if oid:
                     ids.append(oid)
+                    drawn_ops.append(op)
                 done.append(op.label())
             except (RuntimeError, KeyError) as e:
                 failed.append(f"{op.label()}: {str(e)[:140]}")
@@ -289,10 +348,50 @@ class Plotter:
                 except RuntimeError as e:
                     failed.append(f"indicator {name}: {str(e)[:100]}")
 
+        # keep the intended coordinates alongside the ids: cTrader exposes no
+        # lock flag, so objects CAN be dragged. Storing the geometry is what
+        # makes restore() possible.
         self._remember(sym, strat, self._mine(sym, strat) + ids)
+        if self.store:
+            self.store.put(self._geom_key(sym, strat),
+                           [{"id": i, "kind": o.kind, "args": o.args}
+                            for i, o in zip(ids, drawn_ops)])
+            # the row is the source of truth for a redraw: chart objects cannot
+            # be edited in place, so restoring means drawing them again
+            self.store.put(self._row_key(sym, strat), row)
         return {"symbol": sym, "strategy": strat, "ok": not failed,
                 "cleared": cleared, "drawn": len(done), "objects": done,
-                "ids": ids, "reused_chart": focused.get("reused"), "failed": failed}
+                "ids": ids, "reused_chart": focused.get("reused"),
+                "timeframe": focused.get("timeframe"),
+                "timeframe_ok": focused.get("timeframe_ok"),
+                "timeframe_why": focused.get("timeframe_why"), "failed": failed}
+
+    # -- putting things back ----------------------------------------------
+
+    async def restore(self, symbol: str, strategy: str | None = None) -> dict:
+        """Move this tool's objects back to where it drew them.
+
+        cTrader exposes no lock or read-only flag, so anything drawn can be
+        dragged by accident. The first version of this used update_chart_object
+        to rewrite the coordinates in place, which would have been the tidy fix.
+        It does not work: on cTrader Desktop 2.0.0 that tool answers "Invalid
+        parameters" for every MCP-created object, for every argument
+        combination tried, including a colour-only change. The identifier is not
+        the problem - get_chart_objects returns name == objectId, which is what
+        was passed.
+
+        So restore deletes this tool's objects and draws them again from the
+        snapshot taken at plot time. The object ids change, which is why the
+        snapshot is kept: the geometry does not depend on reading anything back
+        off the chart.
+        """
+        snap = (self.store.get(self._row_key(symbol, strategy))
+                if self.store else None)
+        if not snap:
+            return {"ok": False, "why": "nothing recorded for this symbol - plot it first"}
+        res = await self.draw(snap)
+        return res | {"restored_from": "snapshot", "note": "objects were redrawn, "
+                      "so their ids changed"}
 
     async def draw_many(self, rows: list[dict], top_n: int = 5) -> list[dict]:
         """Serial on purpose. Drawing switches the active chart, so parallel

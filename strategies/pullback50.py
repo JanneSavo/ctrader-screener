@@ -32,10 +32,22 @@ class Pullback50(Strategy):
         "pullback_lookback": 10, "touch_atr": 0.60, "break_atr": 1.00,
         "depth_min": 0.025, "depth_max": 0.150, "swing_high_window": 40,
         "close_pos_min": 0.55, "vol_ratio_min": 0.90, "max_extension_atr": 1.25,
-        "atr_stop_mult": 1.75, "target_pct": 0.10, "min_rr": 1.8,
-        "fixed_stop_pct": 0.05,
+        "atr_stop_mult": 1.75,
+        # Target scaled to the stock's own volatility, not a flat percentage.
+        # A fixed 10% was unreachable for calm names - BRK.B had not managed it
+        # in a single 20-day window all year - while R reduced to (10/ATR)/1.75,
+        # i.e. one over volatility, so the ranking put the calmest and least
+        # able name first. Set target_atr_mult to null to go back to target_pct.
+        "target_atr_mult": 3.5, "target_pct": 0.10,
+        "hold_bars": 20,          # the window reachability is measured over
+        "min_hit_rate": 0.10,     # share of past windows that made the move
+        "min_rr": 1.8, "fixed_stop_pct": 0.05,
     }
-    rank_weights = {"trend_frac": 0.20, "rr": 0.30, "tightness": 0.25,
+    # "rr" is deliberately absent: with an ATR-scaled target and an ATR-scaled
+    # stop it is the same number for every candidate, so ranking on it just
+    # ranked on volatility.
+    trigger_gates = frozenset({"Bounce"})
+    rank_weights = {"trend_frac": 0.25, "hit_rate": 0.25, "tightness": 0.25,
                     "vol_ratio": 0.15, "turnover": 0.10}
 
     @property
@@ -80,8 +92,17 @@ class Pullback50(Strategy):
 
         entry = float(last["Close"])
         stop = min(swing_low - 0.25 * atr, entry - p["atr_stop_mult"] * atr)
-        target = entry * (1 + p["target_pct"])
+        target = (entry + p["target_atr_mult"] * atr if p.get("target_atr_mult")
+                  else entry * (1 + p["target_pct"]))
         rr = (target - entry) / max(entry - stop, 1e-9)
+
+        # Has this name actually made a move of this size, over this horizon,
+        # in the past year? With both legs ATR-scaled the R multiple is nearly
+        # constant, so it can no longer separate setups - this can. It is a base
+        # rate from completed windows only, so there is no lookahead.
+        need = (target - entry) / entry
+        fwd = (d["Close"].shift(-int(p["hold_bars"])) / d["Close"] - 1).dropna()
+        hit = float((fwd.tail(252) >= need).mean()) if len(fwd) else 0.0
 
         gates = [
             Gate("Trend", trend_ok, f"{trend_frac:.0%} of {p['trend_window']} bars above the 50DMA"),
@@ -91,16 +112,23 @@ class Pullback50(Strategy):
                  f"{depth:.1%} off the {p['swing_high_window']}-bar high"),
             Gate("Bounce", bounce, f"closed at {cpos:.0%} of range on {vratio:.2f}x volume"),
             Gate("Not extended", ext <= p["max_extension_atr"], f"{ext:.2f} ATR above the 50DMA"),
-            Gate("Reward", rr >= p["min_rr"], f"{rr:.2f}R to a {p['target_pct']:.0%} target"),
+            Gate("Reward", rr >= p["min_rr"], f"{rr:.2f}R to a {need:.1%} target "
+                 f"({(target - entry) / atr:.1f} ATR)"),
+            Gate("Reachable", hit >= p["min_hit_rate"],
+                 f"{hit:.0%} of the last 252 {int(p['hold_bars'])}-day windows gained "
+                 f"{need:.1%} or more"),
         ]
         return self.signal(
             symbol, d, gates, entry=entry, stop=stop, target=target, ctx=ctx,
             zone={"start": look.index[0].date().isoformat(),
                   "end": look.index[-1].date().isoformat(),
                   "low": round(swing_low, 4), "ma_at_low": round(float(look["ma"].min()), 4),
+                  "window_high": round(float(look["High"].max()), 4),
                   "bounce": d.index[-1].date().isoformat(),
                   "swing_high": round(swing_high, 4)},
-            extras={"trend_frac": round(trend_frac, 3), "depth": round(depth, 4),
+            extras={"hit_rate": round(hit, 4),
+                    "target_atr": round((target - entry) / atr, 2),
+                    "trend_frac": round(trend_frac, 3), "depth": round(depth, 4),
                     "extension": round(ext, 2), "tightness": round(1 / (1 + abs(ext)), 3),
                     "vol_ratio": round(vratio, 2),
                     "turnover": round(float(entry * vol_avg), 0),

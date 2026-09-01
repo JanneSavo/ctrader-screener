@@ -41,6 +41,7 @@ from bots import DEFAULT_CAPS, EXITS, BotState, CodegenError, PaperEngine, Posit
 from builder import Composite, SpecError, preview, validate, vocabulary
 from catalysts import EarningsCalendar, NewsFeed, enrich
 from explain import explain as explain_move
+from gex import GexFeed, level_guide as gex_guide, setup_notes as gex_notes
 from ctrader_mcp import CTraderMCP, MCPOwner
 from llm import SEVERITY_LABEL, Analyst
 from quotes import Clocks, Watchlist, ensure_subscribed, poll_quotes, price_state
@@ -202,7 +203,7 @@ async def run_scan() -> dict:
             STATE.update(total=len(symbols))
             await _emit({"phase": "scanning", "total": len(symbols)})
 
-            rows, errors = [], []
+            rows, watching, errors = [], [], []
             sem = asyncio.Semaphore(int(CFG["ctrader"].get("max_concurrency", 4)))
 
             ctx = Ctx(regime=reg, equity=equity,
@@ -221,8 +222,12 @@ async def run_scan() -> dict:
                         bars = STORE.bars(sym)
                         for st in runnable:
                             r = st.evaluate(sym, bars, ctx)
-                            if r and r["pass"]:
+                            if not r:
+                                continue
+                            if r["pass"]:
                                 rows.append(r)
+                            elif r.get("watching"):
+                                watching.append(r)
                     except Exception as e:  # one bad symbol must not kill the scan
                         errors.append({"symbol": sym, "error": str(e)[:200]})
                     finally:
@@ -274,6 +279,29 @@ async def run_scan() -> dict:
                             "name": "Tape check", "ok": sum(f["weight"] for f in fl) < 4,
                             "detail": "; ".join(f["text"] for f in fl[:3])}]
 
+            gcfg = CFG.get("gex") or {}
+            if rows and gcfg.get("enabled"):
+                await _emit({"phase": "gex", "count": len(rows)})
+                feed = GexFeed(gcfg, STORE)
+                idx_sym = CFG["ctrader"].get("index_symbol", "US500")
+                idx = await feed.one(idx_sym)
+                STORE.put("gex_index", idx)
+                notes["gex_regime"] = idx.get("regime") if idx.get("ok") else "unavailable"
+
+                got = await feed.many([r["symbol"] for r in rows])
+                for r in rows:
+                    g = got.get(r["symbol"]) or {}
+                    r["gex"] = g if g.get("ok") else {"ok": False,
+                                                      "why": g.get("why", "unavailable")}
+                    r["gex_notes"] = gex_notes(r, g)
+                    r["gex_guide"] = gex_guide(g)
+                    if r["gex_notes"]:
+                        # a flag, never a gate: GEX is inference, the gates are
+                        # measurement, and inference does not get to reject
+                        r["gates"] = list(r.get("gates", [])) + [{
+                            "name": "Gamma", "ok": True,
+                            "detail": "; ".join(n["text"] for n in r["gex_notes"][:2])}]
+
             analyst = Analyst(CFG.get("llm") or {}, STORE)
             if rows and analyst.enabled:
                 await _emit({"phase": "review", "count": len(rows)})
@@ -287,6 +315,18 @@ async def run_scan() -> dict:
 
             for r in rows:
                 r.pop("tape_brief", None)      # prompt input, not a stored result
+
+            # Watchers are structurally in position but have not triggered.
+            # They get ranked and shown, but not enriched: news, gamma and the
+            # review are per-symbol network calls, and there are usually an
+            # order of magnitude more watchers than setups.
+            cap = int((CFG.get("watchlist") or {}).get("max", 25))
+            watching = rank_within(watching, STRATS)[:cap]
+            for r in watching:
+                r["status"] = "watching"
+            notes["watching"] = len(watching)
+            STORE.put("watching", watching)
+
             ranked = rank_within(rows, STRATS)
             STORE.put("errors", errors[:50])
             plot_cfg = CFG.get("plot") or {}
@@ -538,7 +578,8 @@ async def api_state():
 @app.get("/api/results")
 async def api_results():
     scan = STORE.latest_scan()
-    return {"rows": scan["rows"] if scan else [], "scan": scan and
+    return {"rows": scan["rows"] if scan else [],
+            "watching": STORE.get("watching") or [], "scan": scan and
             {k: scan[k] for k in ("id", "finished", "regime_ok", "regime_note", "scanned", "hits")}}
 
 
@@ -583,6 +624,19 @@ async def api_plot_top(body: dict | None = None):
     res = await Plotter(await _mcp_or_503(), cfg, STORE).draw_many(rows, n)
     STORE.put("plotted", res)
     return {"results": res}
+
+
+@app.post("/api/plot/{symbol}/restore")
+async def api_plot_restore(symbol: str):
+    """Move this tool's objects back to the coordinates it drew them at."""
+    scan = STORE.latest_scan()
+    strat = next((r.get("strategy") for r in ((scan or {}).get("rows") or [])
+                  if r["symbol"] == symbol), None)
+    res = await Plotter(await _mcp_or_503(), CFG.get("plot") or {},
+                        STORE).restore(symbol, strat)
+    if not res.get("ok") and res.get("why"):
+        raise HTTPException(409, res["why"])
+    return res
 
 
 @app.delete("/api/plot/{symbol}")
@@ -675,6 +729,31 @@ async def _explain(symbol: str, lookback: int = 20) -> dict:
     analyst = Analyst({**lcfg, "model": lcfg.get("assistant_model") or lcfg.get("model")},
                       STORE)
     return await explain_move(analyst, symbol, df, idx, news, earnings, moves, lookback)
+
+
+@app.get("/api/gex/{symbol}")
+async def api_gex(symbol: str):
+    """Dealer gamma levels for one symbol, from the free CBOE delayed chain."""
+    g = await GexFeed(CFG.get("gex") or {}, STORE).one(symbol)
+    if not g.get("ok"):
+        raise HTTPException(404, g.get("why", "no options data"))
+    scan = STORE.latest_scan()
+    row = next((r for r in ((scan or {}).get("rows") or [])
+                if r["symbol"].upper() == symbol.upper()), None)
+    return g | {"setup_notes": gex_notes(row, g) if row else [],
+                "guide": gex_guide(g)}
+
+
+@app.get("/api/gex")
+async def api_gex_index():
+    """The index gamma regime: one call, and the broadest use of this data."""
+    cached = STORE.get("gex_index", max_age_s=(CFG.get("gex") or {}).get("cache_ttl_s", 900))
+    if cached:
+        return cached | {"cached": True}
+    g = await GexFeed(CFG.get("gex") or {}, STORE).one(
+        CFG["ctrader"].get("index_symbol", "US500"))
+    STORE.put("gex_index", g)
+    return g
 
 
 @app.get("/api/explain/{symbol}")
@@ -786,7 +865,8 @@ def _chat_deps() -> ChatDeps:
                           "hits": (scan or {}).get("hits")},
             # units in the key names: a bare number invites the model to guess,
             # and it reported "quote interval 5 minutes" for a 5-second clock
-            "clocks_seconds": {"quote": CLOCKS.quote_interval,
+            "gex_index": STORE.get("gex_index") or {},
+        "clocks_seconds": {"quote": CLOCKS.quote_interval,
                                "forming_bar": CLOCKS.forming_interval,
                                "full_scan": CLOCKS.scan_interval,
                                "note": "0 means disabled / manual only"},
@@ -860,6 +940,7 @@ def _chat_deps() -> ChatDeps:
                                 else {"error": "backtest id must be a number"}),
         search_news=lambda sym: STORE.feed(None, sym or None, 25),
         explain_move=lambda sym: _explain(str(sym)),
+        get_gex=lambda sym: GexFeed(CFG.get('gex') or {}, STORE).one(str(sym)),
     )
 
 

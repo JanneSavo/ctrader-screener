@@ -96,6 +96,11 @@ Available tools:
   list_backtests()               past backtest runs and their headline numbers
   get_backtest(id)               full result of one backtest
   search_news(symbol)            headlines collected for a symbol
+  get_gex(symbol)                dealer gamma levels: net GEX, the regime it
+                                 implies, the gamma flip, and the call and put
+                                 walls. Options positioning is INFERRED, not
+                                 measured - treat it as context, never as
+                                 proof, and say so
   explain_move(symbol)           why a stock is moving: measures how much of
                                  the move the index already explains, then
                                  matches the remainder against a dated
@@ -137,6 +142,7 @@ class Deps:
     search_news: Callable[[str], Any]
     get_context: Callable[[], Any]
     explain_move: Callable[[str], Any]
+    get_gex: Callable[[str], Any]
 
 
 def _parse(txt: str) -> dict:
@@ -183,6 +189,8 @@ async def _run_tool(name: str, args: dict, deps: Deps, state: dict) -> Any:
         return deps.get_context()
     if name == "explain_move":
         return await _maybe_await(deps.explain_move(str(args.get("symbol", ""))))
+    if name == "get_gex":
+        return await _maybe_await(deps.get_gex(str(args.get("symbol", ""))))
 
     if name == "preview_recipe":
         spec = args.get("spec") or args

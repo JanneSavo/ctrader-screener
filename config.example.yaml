@@ -90,6 +90,11 @@ ctrader:
     object_list:
       name: get_chart_objects
       args: {}
+    # cTrader has no lock flag for chart objects, so anything drawn can be
+    # dragged by accident. This is what puts it back.
+    object_update:
+      name: update_chart_object
+      args: {objectName: "{name}"}
     # DANGER: auto-discovery matched this to clear_chart_objects, which deletes
     # EVERY drawing on the chart - including your own trendlines and Fibs.
     # delete_chart_object removes exactly one object by id. Pinned.
@@ -231,6 +236,32 @@ bots:
                          # has to be armed individually by typing its key.
 
 # ---------------------------------------------------------------------------
+# watchlist - names that pass every structural gate but have not triggered.
+# A trigger gate describes the entry bar itself, so a setup only qualifies on
+# the single day that bar prints. These are the ones setting up for it.
+# ---------------------------------------------------------------------------
+watchlist:
+  max: 25                # how many to keep, best-ranked first
+
+# ---------------------------------------------------------------------------
+# gex - dealer gamma exposure from the free CBOE delayed-quotes chain.
+# No API key. Roughly 15 minutes delayed. Indices use an underscore (_SPX).
+#
+# This is INFERENCE, not measurement: dealer positioning is assumed, open
+# interest updates once a day, and methodologies disagree on sign. It flags
+# setups, it never rejects them, and it is deliberately absent from the
+# backtest because historical chains are not free.
+# ---------------------------------------------------------------------------
+gex:
+  enabled: true
+  strike_range_pct: 12     # how far either side of spot to aggregate
+  max_dte: 45              # ignore expiries further out than this
+  min_oi: 1                # skip contracts nobody holds
+  cache_ttl_s: 900         # matches the 15-minute delay; refetching is pointless
+  concurrency: 3           # CDN, but stay polite
+  max_symbols: 40          # per scan. ~0.8s each, so 40 is about 30s
+
+# ---------------------------------------------------------------------------
 # plot — draw setups back onto the cTrader chart. LOCAL MCP ONLY.
 # Writes to your workspace UI: focuses/opens charts and draws objects.
 # Places no orders. Only ever deletes objectIds it created itself.
@@ -249,6 +280,8 @@ plot:
                          # stay visible without hovering and tag the price axis.
   draw_zone: true        # pullback rectangle + bounce marker
   draw_label: true       # score, R, size, earnings, tape flags, review verdict
+  draw_gex: true         # gamma call wall, put wall and flip as horizontal lines
+  label_gex: true        # name those lines on the chart
   draw_indicators: false # addChartIndicator takes no period argument, so it adds
                          # the indicator with cTrader's defaults, not 50/200.
   indicators: ["Simple Moving Average"]
@@ -259,6 +292,14 @@ plot:
     zone: "#E8B94A"
     bounce: "#6FD3B5"
     label: "#E7ECF3"
+    # Gamma levels get their own colour family, deliberately far from the
+    # trade levels. The first pass used a teal call wall next to a mint target
+    # and a dull red put wall next to a red stop, which read as the same line
+    # twice. Trade levels are the plan (grey/red/green); gamma is market
+    # structure (blue/purple/magenta).
+    call_wall: "#4D9DE0"
+    put_wall: "#9B5DE5"
+    flip: "#D65DB1"
 
 # ---------------------------------------------------------------------------
 # social — chatter as a RISK input. Never a buy signal. See social.py.
@@ -279,9 +320,7 @@ social:
 # ---------------------------------------------------------------------------
 llm:
   enabled: true            # flip to true once the model server is up
-  base_url: "http://127.0.0.1:11434/v1"   # any OpenAI-compatible server you host
-                                        # (Ollama, LM Studio, llama.cpp, vLLM).
-                                        # Ollama default; LM Studio uses :1234/v1
+  base_url: "http://127.0.0.1:11434/v1"   # Ollama default. LM Studio: :1234/v1
   model: "qwen2.5:14b-instruct"   # 7b flagged on absence of news and misattributed
                                   # more often; 14b fits 12GB at q4 and is better
                                   # calibrated. ~2.6s/setup vs 1.9s.

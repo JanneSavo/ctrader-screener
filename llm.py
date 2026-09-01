@@ -149,7 +149,7 @@ class Analyst:
         return self._client
 
     async def _complete(self, brief: str, system: str | None = None) -> str:
-        """One completion, returning raw text."""
+        """One completion, returning raw text. Provider differences end here."""
         system = system or SYSTEM
         client = self._client_or_none()
         # Qwen3 and other hybrid-reasoning models emit a <think> block first.

@@ -32,6 +32,7 @@ class OversoldSnapback(Strategy):
         "down_days_min": 2, "max_drop_atr": 4.0,
         "atr_stop_mult": 2.5, "min_rr": 1.0,
     }
+    trigger_gates = frozenset({"Oversold", "Down streak"})
     rank_weights = {"rr": 0.30, "oversold": 0.40, "turnover": 0.30}
 
     @property

@@ -33,6 +33,7 @@ class RangeBreakout(Strategy):
         "max_extension_atr": 1.00,                   # how far past the breakout level
         "atr_stop_mult": 2.0, "target_r": 2.5, "min_rr": 2.0,
     }
+    trigger_gates = frozenset({"Breakout", "Volume", "Closed strong"})
     rank_weights = {"rr": 0.25, "squeeze": 0.30, "vol_ratio": 0.25, "turnover": 0.20}
 
     @property
